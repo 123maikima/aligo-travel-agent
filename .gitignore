@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data - user data and model weights
+data/
+
+# Milvus Lite DB
+*.db
+
+# Logs
+*.log
+
+# uv lockfile
+uv.lock
+
+# Test result reports
+tests/results/
+
+# Claude local settings
+.claude/claudian-settings.json
+.claude/settings.local.json
+
+# Personal documents (not part of project)
+*.pdf
+*D*travel*
+*JD.md
+*jd.md
+README_question.md
