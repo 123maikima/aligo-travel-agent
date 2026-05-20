@@ -108,13 +108,7 @@ class AligoCLI:
             )
 
             # 初始化 Redis 缓存
-            self.redis_cache = RedisCache(
-                host=REDIS_CONFIG["host"],
-                port=REDIS_CONFIG["port"],
-                db=REDIS_CONFIG["db"],
-                password=REDIS_CONFIG["password"],
-                enabled=REDIS_CONFIG["enabled"],
-            )
+            self.redis_cache = RedisCache(**REDIS_CONFIG)
 
             # 初始化记忆管理器（传入LLM模型用于总结 + Redis缓存）
             self.memory_manager = MemoryManager(

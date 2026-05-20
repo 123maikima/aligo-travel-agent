@@ -83,12 +83,7 @@ class BenchmarkRunner:
 
         # Redis 缓存（可选）
         if self.enable_redis and REDIS_CONFIG.get("enabled", True):
-            self.redis_cache = RedisCache(
-                host=REDIS_CONFIG["host"],
-                port=REDIS_CONFIG["port"],
-                db=REDIS_CONFIG["db"],
-                password=REDIS_CONFIG["password"],
-            )
+            self.redis_cache = RedisCache(**REDIS_CONFIG)
             if self.redis_cache.enabled:
                 print(f"[benchmark] Redis cache enabled")
             else:

@@ -4,6 +4,7 @@ Redis 缓存客户端
 """
 import json
 import logging
+import os
 from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,9 @@ class RedisCache:
 
     def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0,
                  password: Optional[str] = None, enabled: bool = True):
+        host = os.getenv("REDIS_HOST", host)
+        port = int(os.getenv("REDIS_PORT", port))
+        db = int(os.getenv("REDIS_DB", db))
         self.enabled = enabled and REDIS_AVAILABLE
         self._client: Optional[redis.Redis] = None
         self.stats = CacheStats()
@@ -126,6 +130,17 @@ class RedisCache:
         except Exception:
             pass
 
+    def _delete_pattern(self, pattern: str):
+        """按模式批量删除缓存键"""
+        if not self.enabled or not self._client:
+            return
+        try:
+            keys = list(self._client.scan_iter(match=pattern))
+            if keys:
+                self._client.delete(*keys)
+        except Exception as e:
+            logger.warning(f"Redis pattern delete failed: {e}")
+
     # ========== 短期记忆缓存 ==========
 
     def get_short_term_memory(self, session_id: str) -> Optional[list]:
@@ -140,8 +155,7 @@ class RedisCache:
 
     def clear_short_term_memory(self, session_id: str):
         """清除短期记忆"""
-        key = self._key(self.KEY_STM, session_id=session_id)
-        self._delete(key)
+        self.invalidate_short_term_memory(session_id)
 
     # ========== LLM总结缓存 ==========
 
@@ -156,6 +170,11 @@ class RedisCache:
         key = self._key(self.KEY_SUMMARY, user_id=user_id)
         self._set(key, {"summary": summary}, self.TTL_SUMMARY)
 
+    def invalidate_summary(self, user_id: str):
+        """使用户的 LLM 总结缓存失效"""
+        key = self._key(self.KEY_SUMMARY, user_id=user_id)
+        self._delete(key)
+
     # ========== 用户偏好缓存 ==========
 
     def get_preference(self, user_id: str, pref_type: str) -> Optional[Any]:
@@ -168,17 +187,31 @@ class RedisCache:
         key = self._key(self.KEY_PREF, user_id=user_id, pref_type=pref_type)
         self._set(key, value, self.TTL_PREF)
 
+    def invalidate_preference(self, user_id: str, pref_type: str):
+        """使单个偏好缓存失效"""
+        key = self._key(self.KEY_PREF, user_id=user_id, pref_type=pref_type)
+        self._delete(key)
+
     def invalidate_preferences(self, user_id: str):
         """使某用户所有偏好缓存失效"""
-        if not self.enabled or not self._client:
-            return
-        try:
-            # 扫描并删除该用户的所有偏好key
-            pattern = self._key(self.KEY_PREF, user_id=user_id, pref_type="*")
-            for key in self._client.scan_iter(match=pattern):
-                self._client.delete(key)
-        except Exception as e:
-            logger.warning(f"Failed to invalidate preferences: {e}")
+        pattern = self._key(self.KEY_PREF, user_id=user_id, pref_type="*")
+        self._delete_pattern(pattern)
+
+    def invalidate_user_cache(self, user_id: str, session_id: Optional[str] = None):
+        """
+        使用户相关缓存失效
+
+        适用于偏好/总结变更后的统一清理。
+        """
+        self.invalidate_preferences(user_id)
+        self.invalidate_summary(user_id)
+        if session_id:
+            self.invalidate_short_term_memory(session_id)
+
+    def invalidate_short_term_memory(self, session_id: str):
+        """使短期记忆缓存失效"""
+        key = self._key(self.KEY_STM, session_id=session_id)
+        self._delete(key)
 
     # ========== 统计 ==========
 

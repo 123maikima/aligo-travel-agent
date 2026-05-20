@@ -38,10 +38,10 @@ class MemoryManager:
         self.llm_model = llm_model
         self.redis_cache = redis_cache
 
-        # 初始化两层记忆（短期记忆传入 Redis 后端）
+        # 初始化两层记忆（短期记忆和长期记忆都传入 Redis 后端）
         self.short_term = ShortTermMemory(max_turns=10, redis_cache=redis_cache)
         self.short_term.set_session(session_id)
-        self.long_term = LongTermMemory(user_id, storage_path)
+        self.long_term = LongTermMemory(user_id, storage_path, redis_cache=redis_cache)
 
         logger.info(f"Memory manager initialized for user {user_id}, session {session_id}"
                     f"{' (Redis cache enabled)' if redis_cache and redis_cache.enabled else ''}")
@@ -64,7 +64,19 @@ class MemoryManager:
         self.long_term.add_chat_message(role, content, self.session_id)
 
     # ========== 长期记忆操作 ==========
-    # 注意：大部分方法直接使用 self.short_term 和 self.long_term 即可，无需封装
+
+    def get_preference(self, pref_type: str = None) -> Any:
+        """获取用户偏好（优先从 Redis 热缓存读取）"""
+        return self.long_term.get_preference(pref_type)
+
+    def save_preference(self, pref_type: str, value: Any):
+        """保存用户偏好（同步写入 Redis 热缓存）"""
+        self.long_term.save_preference(pref_type, value)
+
+    def invalidate_preferences(self):
+        """使某用户所有 Redis 偏好缓存失效"""
+        if self.redis_cache:
+            self.redis_cache.invalidate_preferences(self.user_id)
 
     # ========== 综合查询 ==========
 

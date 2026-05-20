@@ -1,6 +1,21 @@
 """
 Configuration for the Aligo Multi-Agent System
 """
+import os
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return int(value)
 
 # LLM Configuration
 LLM_CONFIG = {
@@ -26,11 +41,12 @@ RAG_CONFIG = {
 
 # Redis 缓存配置
 REDIS_CONFIG = {
-    "host": "localhost",
-    "port": 6379,
-    "db": 0,
-    "password": None,
-    "enabled": True,  # 设为 False 则禁用 Redis 缓存
+    # 环境变量优先，便于本地 Redis、CI 和容器环境切换。
+    "host": os.getenv("REDIS_HOST", "localhost"),
+    "port": _env_int("REDIS_PORT", 6379),
+    "db": _env_int("REDIS_DB", 0),
+    "password": os.getenv("REDIS_PASSWORD") or None,
+    "enabled": _env_bool("REDIS_ENABLED", True),  # 设为 False 则禁用 Redis 缓存
 }
 
 # 连接与可用性：重试、熔断、健康检查

@@ -20,24 +20,27 @@ class LongTermMemory:
     - 统计信息
     """
 
-    def __init__(self, user_id: str, storage_path: str = "data/memory"):
+    def __init__(self, user_id: str, storage_path: str = "data/memory", redis_cache=None):
         """
         初始化长期记忆
 
         Args:
             user_id: 用户ID
             storage_path: 存储路径
+            redis_cache: RedisCache实例（可选，传入后启用偏好热缓存）
         """
         self.user_id = user_id
         self.storage_path = storage_path
         self.db_path = os.path.join(storage_path, f"{user_id}.json")
+        self.redis_cache = redis_cache
 
         # 确保存储目录存在
         Path(storage_path).mkdir(parents=True, exist_ok=True)
 
         # 加载或初始化数据
         self.data = self._load()
-        logger.info(f"Long-term memory initialized for user: {user_id}")
+        logger.info(f"Long-term memory initialized for user: {user_id}"
+                    f"{' (Redis cache enabled)' if redis_cache and redis_cache.enabled else ''}")
 
     def _load(self) -> Dict[str, Any]:
         """从文件加载数据"""
@@ -138,9 +141,20 @@ class LongTermMemory:
         except Exception as e:
             logger.error(f"Failed to save long-term memory: {e}")
 
+    def _invalidate_redis_summary(self):
+        """长期记忆变更后，失效相关 Redis 总结缓存"""
+        if self.redis_cache and self.redis_cache.enabled:
+            self.redis_cache.invalidate_summary(self.user_id)
+
+    def _cache_preference(self, pref_type: str, value: Any):
+        """将单个偏好写入 Redis 热缓存"""
+        if self.redis_cache and self.redis_cache.enabled:
+            self.redis_cache.save_preference(self.user_id, pref_type, value)
+
     def save_preference(self, pref_type: str, value: Any):
         """
         保存用户偏好（列表格式）
+        同时写入 Redis 热缓存
 
         Args:
             pref_type: 偏好类型
@@ -161,6 +175,9 @@ class LongTermMemory:
             preferences.append({"type": pref_type, "value": value})
 
         self._save()
+        self._cache_preference(pref_type, value)
+        self._invalidate_redis_summary()
+
         logger.info(f"Saved preference: {pref_type} = {value}")
 
     def get_preference(self, pref_type: str = None) -> Any:
@@ -179,13 +196,25 @@ class LongTermMemory:
             # 返回字典格式，方便调用方使用
             result = {}
             for pref in preferences:
-                result[pref.get("type")] = pref.get("value")
+                pref_key = pref.get("type")
+                pref_value = pref.get("value")
+                result[pref_key] = pref_value
+                if pref_key and pref_value is not None:
+                    self._cache_preference(pref_key, pref_value)
             return result
         else:
-            # 查找特定类型的偏好
+            # 优先从 Redis 热缓存读取
+            if self.redis_cache and self.redis_cache.enabled:
+                cached = self.redis_cache.get_preference(self.user_id, pref_type)
+                if cached is not None:
+                    return cached
+
+            # 从磁盘数据查找特定类型的偏好
             for pref in preferences:
                 if pref.get("type") == pref_type:
-                    return pref.get("value")
+                    value = pref.get("value")
+                    self._cache_preference(pref_type, value)
+                    return value
             return None
 
     def add_hotel_brand(self, brand: str):
@@ -211,6 +240,12 @@ class LongTermMemory:
             preferences.append({"type": "hotel_brands", "value": [brand]})
 
         self._save()
+        self._cache_preference(
+            "hotel_brands",
+            next((p["value"] for p in preferences if p.get("type") == "hotel_brands"), [])
+        )
+        self._invalidate_redis_summary()
+
         logger.info(f"Added hotel brand preference: {brand}")
 
     def add_airline(self, airline: str):
@@ -236,6 +271,12 @@ class LongTermMemory:
             preferences.append({"type": "airlines", "value": [airline]})
 
         self._save()
+        self._cache_preference(
+            "airlines",
+            next((p["value"] for p in preferences if p.get("type") == "airlines"), [])
+        )
+        self._invalidate_redis_summary()
+
         logger.info(f"Added airline preference: {airline}")
 
     def add_chat_message(self, role: str, content: str, session_id: str = None):
@@ -257,6 +298,7 @@ class LongTermMemory:
         self.data["chat_history"].append(message)
         self.data["statistics"]["total_messages"] += 1
         self._save()
+        self._invalidate_redis_summary()
         logger.debug(f"Added chat message to long-term memory: {role}")
 
     def get_chat_history(self, limit: int = None, session_id: str = None) -> List[Dict[str, Any]]:
@@ -304,6 +346,7 @@ class LongTermMemory:
             freq[destination] = freq.get(destination, 0) + 1
 
         self._save()
+        self._invalidate_redis_summary()
         logger.info(f"Saved trip history: {trip_record['trip_id']}")
 
     def get_trip_history(self, limit: int = 10) -> List[Dict[str, Any]]:
@@ -349,6 +392,8 @@ class LongTermMemory:
         self.data["statistics"]["total_messages"] = 0
         self.data["statistics"]["frequent_destinations"] = {}
         self._save()
+        self._invalidate_redis_summary()
+
         logger.info("Cleared all history (chat + trips)")
 
     def delete_all(self):
@@ -356,3 +401,5 @@ class LongTermMemory:
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
             logger.warning(f"Deleted long-term memory file: {self.db_path}")
+        if self.redis_cache and self.redis_cache.enabled:
+            self.redis_cache.invalidate_user_cache(self.user_id)

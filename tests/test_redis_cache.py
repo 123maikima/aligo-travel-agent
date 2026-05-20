@@ -196,6 +196,99 @@ def test_short_term_memory_with_redis():
     print("[PASS] test_short_term_memory_with_redis")
 
 
+def test_long_term_memory_preference_redis():
+    """测试 LongTermMemory + Redis 偏好缓存集成"""
+    from context.long_term_memory import LongTermMemory
+
+    cache = RedisCache()
+    if not cache.enabled:
+        print("[SKIP] test_long_term_memory_preference_redis (Redis not available)")
+        return
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # 创建带 Redis 的长期记忆
+        ltm = LongTermMemory("test_user", storage_path=tmpdir, redis_cache=cache)
+
+        # 保存偏好
+        ltm.save_preference("hotel_brands", ["汉庭", "如家"])
+        ltm.save_preference("airlines", ["东航"])
+
+        # 验证 Redis 中有缓存
+        assert cache.get_preference("test_user", "hotel_brands") == ["汉庭", "如家"]
+        assert cache.get_preference("test_user", "airlines") == ["东航"]
+
+        # 验证从 LongTermMemory 读取也走 Redis 缓存
+        assert ltm.get_preference("hotel_brands") == ["汉庭", "如家"]
+
+        # 添加酒店品牌
+        ltm.add_hotel_brand("全季")
+        assert ltm.get_preference("hotel_brands") == ["汉庭", "如家", "全季"]
+        assert cache.get_preference("test_user", "hotel_brands") == ["汉庭", "如家", "全季"]
+
+        # 添加航空公司
+        ltm.add_airline("南航")
+        assert ltm.get_preference("airlines") == ["东航", "南航"]
+        assert cache.get_preference("test_user", "airlines") == ["东航", "南航"]
+
+        # 验证读穿：删除 Redis 后仍可从磁盘读取并回填
+        cache.invalidate_preference("test_user", "hotel_brands")
+        assert ltm.get_preference("hotel_brands") == ["汉庭", "如家", "全季"]
+        assert cache.get_preference("test_user", "hotel_brands") == ["汉庭", "如家", "全季"]
+
+        # 清空历史，偏好缓存失效
+        ltm.clear_history()
+        # 使失效后再次读取应该 miss
+        cache.get_preference("test_user", "hotel_brands")
+        assert cache.stats.misses > 0
+
+    print("[PASS] test_long_term_memory_preference_redis")
+
+
+def test_long_term_memory_summary_invalidation():
+    """测试长期记忆变更会失效 Redis 总结缓存"""
+    from context.long_term_memory import LongTermMemory
+
+    cache = RedisCache()
+    if not cache.enabled:
+        print("[SKIP] test_long_term_memory_summary_invalidation (Redis not available)")
+        return
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ltm = LongTermMemory("summary_user", storage_path=tmpdir, redis_cache=cache)
+        cache.save_summary("summary_user", "旧摘要")
+        assert cache.get_summary("summary_user")["summary"] == "旧摘要"
+
+        ltm.add_chat_message("user", "我想去上海")
+        assert cache.get_summary("summary_user") is None
+
+        cache.save_summary("summary_user", "旧摘要2")
+        ltm.save_trip_history({
+            "origin": "北京",
+            "destination": "上海",
+            "purpose": "出差"
+        })
+        assert cache.get_summary("summary_user") is None
+
+    print("[PASS] test_long_term_memory_summary_invalidation")
+
+
+def test_short_term_session_reset():
+    """测试短期记忆切换会话时不会残留旧消息"""
+    from context.short_term_memory import ShortTermMemory
+
+    stm = ShortTermMemory(max_turns=3)
+    stm.add_message("user", "session_a_1")
+    stm.add_message("assistant", "session_a_2")
+    assert len(stm.messages) == 2
+
+    stm.set_session("session_b")
+    assert stm.messages == []
+
+    print("[PASS] test_short_term_session_reset")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("Redis 缓存层测试")
@@ -207,6 +300,9 @@ if __name__ == "__main__":
     test_redis_preference_cache()
     test_redis_hit_rate()
     test_short_term_memory_with_redis()
+    test_long_term_memory_preference_redis()
+    test_long_term_memory_summary_invalidation()
+    test_short_term_session_reset()
 
     print("\n" + "=" * 50)
     print("全部测试完成")

@@ -51,6 +51,7 @@ class ShortTermMemory:
     def set_session(self, session_id: str):
         """设置当前会话ID，用于 Redis 缓存"""
         self._session_id = session_id
+        self.messages = []
         # 尝试从 Redis 恢复
         self._load_from_redis(session_id)
 
