@@ -17,6 +17,13 @@ def _env_int(name: str, default: int) -> int:
         return default
     return int(value)
 
+
+def _env_str(name: str, default: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip() or default
+
 # LLM Configuration
 LLM_CONFIG = {
     "api_key": "82df119f-41c2-4f44-bc20-f5ed0f540e0e",
@@ -47,6 +54,18 @@ REDIS_CONFIG = {
     "db": _env_int("REDIS_DB", 0),
     "password": os.getenv("REDIS_PASSWORD") or None,
     "enabled": _env_bool("REDIS_ENABLED", True),  # 设为 False 则禁用 Redis 缓存
+}
+
+# PostgreSQL 持久化配置
+POSTGRES_CONFIG = {
+    "host": os.getenv("POSTGRES_HOST", "localhost"),
+    "port": _env_int("POSTGRES_PORT", 5432),
+    "dbname": _env_str("POSTGRES_DB", "travel_agent"),
+    "user": _env_str("POSTGRES_USER", "postgres"),
+    "password": os.getenv("POSTGRES_PASSWORD") or None,
+    "sslmode": _env_str("POSTGRES_SSLMODE", "prefer"),
+    "connect_timeout": _env_int("POSTGRES_CONNECT_TIMEOUT", 5),
+    "enabled": _env_bool("POSTGRES_ENABLED", False),
 }
 
 # 连接与可用性：重试、熔断、健康检查

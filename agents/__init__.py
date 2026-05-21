@@ -6,9 +6,15 @@ Aligo Multi-Agent System - Agents Package
 from .intention_agent import IntentionAgent
 from .orchestration_agent import OrchestrationAgent
 from .lazy_agent_registry import LazyAgentRegistry
+from .information_query_agent import InformationQueryAgent
+from .preference_agent import PreferenceAgent
+from .itinerary_planning_agent import ItineraryPlanningAgent
 
 __all__ = [
     'IntentionAgent',
     'OrchestrationAgent',
     'LazyAgentRegistry',
+    'InformationQueryAgent',
+    'PreferenceAgent',
+    'ItineraryPlanningAgent',
 ]

@@ -1,0 +1,2 @@
+# 每天 18:00 自动检查并推送
+0 18 * * * /bin/bash /home/ubuntu/travel-agent/scripts/github_auto_push.sh >> /home/ubuntu/travel-agent/github_auto_push.log 2>&1

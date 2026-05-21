@@ -9,6 +9,9 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
+from config import POSTGRES_CONFIG
+from .postgres_storage import PostgresLongTermStore
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +23,13 @@ class LongTermMemory:
     - 统计信息
     """
 
-    def __init__(self, user_id: str, storage_path: str = "data/memory", redis_cache=None):
+    def __init__(
+        self,
+        user_id: str,
+        storage_path: str = "data/memory",
+        redis_cache=None,
+        postgres_config: Optional[Dict[str, Any]] = None,
+    ):
         """
         初始化长期记忆
 
@@ -33,6 +42,16 @@ class LongTermMemory:
         self.storage_path = storage_path
         self.db_path = os.path.join(storage_path, f"{user_id}.json")
         self.redis_cache = redis_cache
+        self.postgres_config = dict(postgres_config or POSTGRES_CONFIG)
+        self.postgres_store = None
+        if self.postgres_config.get("enabled", False):
+            try:
+                self.postgres_store = PostgresLongTermStore(self.postgres_config)
+                if not self.postgres_store.available:
+                    self.postgres_store = None
+            except Exception as e:
+                logger.warning(f"Failed to initialize PostgreSQL backend: {e}")
+                self.postgres_store = None
 
         # 确保存储目录存在
         Path(storage_path).mkdir(parents=True, exist_ok=True)
@@ -44,6 +63,15 @@ class LongTermMemory:
 
     def _load(self) -> Dict[str, Any]:
         """从文件加载数据"""
+        if self.postgres_store:
+            try:
+                data = self.postgres_store.load_snapshot(self.user_id)
+                if data:
+                    logger.debug(f"Loaded long-term memory from PostgreSQL for {self.user_id}")
+                    return self._migrate_data(data)
+            except Exception as e:
+                logger.warning(f"Failed to load long-term memory from PostgreSQL: {e}")
+
         if os.path.exists(self.db_path):
             try:
                 with open(self.db_path, 'r', encoding='utf-8') as f:
@@ -79,6 +107,8 @@ class LongTermMemory:
             data["statistics"] = {}
         if "total_messages" not in data.get("statistics", {}):
             data["statistics"]["total_messages"] = 0
+        if "total_queries" not in data.get("statistics", {}):
+            data["statistics"]["total_queries"] = 0
         if "preferences" not in data:
             data["preferences"] = []
 
@@ -127,19 +157,27 @@ class LongTermMemory:
             "statistics": {
                 "total_trips": 0,
                 "total_messages": 0,
+                "total_queries": 0,
                 "frequent_destinations": {}
             }
         }
 
     def _save(self):
-        """保存数据到文件"""
+        """保存数据到文件，并在启用时同步写入 PostgreSQL。"""
+        self.data["updated_at"] = datetime.now().isoformat()
+
+        if self.postgres_store:
+            try:
+                self.postgres_store.save_snapshot(self.user_id, self.data)
+            except Exception as e:
+                logger.warning(f"Failed to save long-term memory to PostgreSQL: {e}")
+
         try:
-            self.data["updated_at"] = datetime.now().isoformat()
             with open(self.db_path, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, ensure_ascii=False, indent=2)
             logger.debug(f"Saved long-term memory to {self.db_path}")
         except Exception as e:
-            logger.error(f"Failed to save long-term memory: {e}")
+            logger.error(f"Failed to save long-term memory file: {e}")
 
     def _invalidate_redis_summary(self):
         """长期记忆变更后，失效相关 Redis 总结缓存"""
@@ -401,5 +439,10 @@ class LongTermMemory:
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
             logger.warning(f"Deleted long-term memory file: {self.db_path}")
+        if self.postgres_store:
+            try:
+                self.postgres_store.delete_user(self.user_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete PostgreSQL memory for user {self.user_id}: {e}")
         if self.redis_cache and self.redis_cache.enabled:
             self.redis_cache.invalidate_user_cache(self.user_id)

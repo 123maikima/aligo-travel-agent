@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional
 from .short_term_memory import ShortTermMemory
 from .long_term_memory import LongTermMemory
 from .redis_cache import RedisCache
+from config import POSTGRES_CONFIG
 import logging
 import json
 
@@ -22,7 +23,8 @@ class MemoryManager:
     """
 
     def __init__(self, user_id: str, session_id: str, storage_path: str = "data/memory",
-                 llm_model=None, redis_cache: Optional[RedisCache] = None):
+                 llm_model=None, redis_cache: Optional[RedisCache] = None,
+                 postgres_config: Optional[Dict[str, Any]] = None):
         """
         初始化记忆管理器
 
@@ -32,16 +34,23 @@ class MemoryManager:
             storage_path: 长期记忆存储路径
             llm_model: LLM模型实例（用于总结长期记忆）
             redis_cache: RedisCache实例（可选，传入后启用缓存）
+            postgres_config: PostgreSQL配置（可选，优先使用显式传入值）
         """
         self.user_id = user_id
         self.session_id = session_id
         self.llm_model = llm_model
         self.redis_cache = redis_cache
+        self.postgres_config = dict(postgres_config or POSTGRES_CONFIG)
 
         # 初始化两层记忆（短期记忆和长期记忆都传入 Redis 后端）
         self.short_term = ShortTermMemory(max_turns=10, redis_cache=redis_cache)
         self.short_term.set_session(session_id)
-        self.long_term = LongTermMemory(user_id, storage_path, redis_cache=redis_cache)
+        self.long_term = LongTermMemory(
+            user_id,
+            storage_path,
+            redis_cache=redis_cache,
+            postgres_config=self.postgres_config,
+        )
 
         logger.info(f"Memory manager initialized for user {user_id}, session {session_id}"
                     f"{' (Redis cache enabled)' if redis_cache and redis_cache.enabled else ''}")

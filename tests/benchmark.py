@@ -26,7 +26,7 @@ sys.path.insert(0, project_root)
 from agentscope.model import OpenAIChatModel
 from agentscope.message import Msg
 from config_agentscope import init_agentscope
-from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, REDIS_CONFIG
+from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, REDIS_CONFIG, POSTGRES_CONFIG
 from context.memory_manager import MemoryManager
 from context.redis_cache import RedisCache
 from agents.intention_agent import IntentionAgent
@@ -109,6 +109,7 @@ class BenchmarkRunner:
             storage_path="data/memory",
             llm_model=self.model,
             redis_cache=self.redis_cache,
+            postgres_config=POSTGRES_CONFIG,
         )
 
     def _create_orchestrator(self, memory_manager: MemoryManager) -> OrchestrationAgent:

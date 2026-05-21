@@ -429,9 +429,9 @@ shanglv/
 ├── context/                         # 记忆系统
 │   ├── memory_manager.py            # 记忆管理器
 │   ├── short_term_memory.py         # 短期记忆
-│   └── long_term_memory.py          # 长期记忆（支持动态偏好）
+│   └── long_term_memory.py          # 长期记忆（支持 PostgreSQL + JSON 兜底）
 ├── data/
-│   ├── memory/                      # 长期记忆JSON存储（user_id.json）
+│   ├── memory/                      # 长期记忆 JSON 兜底与迁移来源（user_id.json）
 │   └── models/                      # 本地模型文件
 │       └── bge-small-zh-v1.5/       # BGE中文Embedding模型
 ├── tests/                           # 测试脚本
@@ -497,9 +497,9 @@ shanglv/
 - BGE Embedding模型需下载到 `data/models/bge-small-zh-v1.5/`
 
 ### 数据存储
-- 当前版本使用**JSON文件存储**长期记忆（`data/memory/{user_id}.json`）
-- 项目描述中提到的PostgreSQL和Redis是**架构设计方案**（面向生产环境）
-- 如需切换到PostgreSQL/Redis，需修改 `context/long_term_memory.py` 和 `context/short_term_memory.py`
+- 当前版本长期记忆默认采用 **PostgreSQL 持久化**，`data/memory/{user_id}.json` 作为迁移来源和离线兜底
+- Redis 作为短期记忆和热数据缓存层，已接入配置化切换
+- 通过 `POSTGRES_ENABLED=true` 可启用 PostgreSQL 后端；未启用时自动回退到 JSON 文件
 
 ### 知识库初始化
 - 首次运行前必须初始化RAG知识库
@@ -515,7 +515,6 @@ shanglv/
 
 ## 🚀 未来规划
 
-- [ ] 完整实现PostgreSQL持久化存储
 - [ ] 完整实现Redis缓存层
 - [ ] 支持更多LLM模型（OpenAI、Claude等）
 - [ ] Web界面（FastAPI + React）

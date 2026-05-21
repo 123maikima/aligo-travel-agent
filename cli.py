@@ -27,7 +27,7 @@ import json
 # 导入系统组件
 from agentscope.model import OpenAIChatModel
 from config_agentscope import init_agentscope
-from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG
+from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, POSTGRES_CONFIG
 from context.memory_manager import MemoryManager
 from context.redis_cache import RedisCache
 from utils.circuit_breaker import CircuitBreaker, CircuitOpenError
@@ -116,6 +116,7 @@ class AligoCLI:
                 session_id=self.session_id,
                 llm_model=self.model,
                 redis_cache=self.redis_cache,
+                postgres_config=POSTGRES_CONFIG,
             )
 
             # 初始化意图识别智能体（必须预加载）

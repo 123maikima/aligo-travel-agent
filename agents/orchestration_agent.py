@@ -10,8 +10,8 @@
 5. 与记忆系统集成
 
 执行模式：
-- 按优先级分组，每组内并行执行（asyncio.gather）
-- 不同优先级组间串行执行（前一组结果作为后一组的上下文）
+- 同一优先级内并行执行（asyncio.gather）
+- 不同优先级按顺序执行，前一组结果作为后一组的上下文
 """
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 class AgentRegistry(Protocol):
     """Agent 注册表接口，支持 dict 和 LazyAgentRegistry"""
+
     def __contains__(self, name: str) -> bool: ...
     def __getitem__(self, name: str) -> AgentBase: ...
     def get(self, name: str, default=None) -> Optional[AgentBase]: ...
@@ -43,7 +44,7 @@ class OrchestrationAgent(AgentBase):
         self,
         name: str = "OrchestrationAgent",
         agent_registry: AgentRegistry = None,
-        memory_manager = None,
+        memory_manager=None,
         agent_timeout_sec: float = AGENT_TIMEOUT_SEC,
         **kwargs
     ):
@@ -75,6 +76,7 @@ class OrchestrationAgent(AgentBase):
             intention_output = x[-1].content if x else "{}"
         else:
             intention_output = x.content
+
         try:
             intention_data = json.loads(intention_output) if isinstance(intention_output, str) else intention_output
         except json.JSONDecodeError as e:
@@ -84,23 +86,34 @@ class OrchestrationAgent(AgentBase):
         # 获取并排序调度计划
         agent_schedule = intention_data.get("agent_schedule", [])
         if not agent_schedule:
-            return Msg(name=self.name, content=json.dumps({"status": "no_agents", "message": "没有需要调度的智能体"}), role="assistant")
+            return Msg(
+                name=self.name,
+                content=json.dumps({"status": "no_agents", "message": "没有需要调度的智能体"}),
+                role="assistant",
+            )
 
-        sorted_schedule = sorted(agent_schedule, key=lambda t: t.get("priority", 999))
+        # 先按优先级、再按 agent 名称排序，保证同优先级下执行顺序稳定。
+        sorted_schedule = sorted(agent_schedule, key=lambda t: (t.get("priority", 999), t.get("agent_name", "")))
 
         # 按优先级分组执行：组内并行，组间串行
-        all_results = []
+        all_results: List[Dict[str, Any]] = []
+        execution_batches: List[Dict[str, Any]] = []
         priority_batches = self._group_by_priority(sorted_schedule)
 
         for priority, batch_tasks in priority_batches:
             logger.info(f"Executing priority {priority} batch: {[t['agent_name'] for t in batch_tasks]}")
             batch_results = await self._execute_parallel_batch(batch_tasks, intention_data, all_results)
             all_results.extend(batch_results)
+            execution_batches.append({
+                "priority": priority,
+                "agents": [task.get("agent_name") for task in batch_tasks],
+                "count": len(batch_tasks),
+            })
 
         # 聚合结果 + 更新记忆
-        final_result = self._aggregate_results(all_results, intention_data)
+        final_result = self._aggregate_results(all_results, intention_data, execution_batches)
         if self.memory_manager:
-            MemoryUpdater.update(self.memory_manager, all_results)
+            self._update_memory(intention_data, all_results)
 
         return Msg(name=self.name, content=json.dumps(final_result, ensure_ascii=False), role="assistant")
 
@@ -115,7 +128,11 @@ class OrchestrationAgent(AgentBase):
         current_batch = []
 
         for task in sorted_schedule:
-            priority = task.get("priority", 0)
+            try:
+                priority = int(task.get("priority", 999))
+            except (TypeError, ValueError):
+                priority = 999
+
             if priority != current_priority:
                 if current_batch:
                     batches.append((current_priority, current_batch))
@@ -146,7 +163,6 @@ class OrchestrationAgent(AgentBase):
             context["recent_dialogue"] = recent
             context["user_preferences"] = self.memory_manager.long_term.get_preference()
 
-
         return context
 
     async def _execute_parallel_batch(
@@ -160,14 +176,6 @@ class OrchestrationAgent(AgentBase):
 
         - 单个 task：直接串行执行
         - 多个 task：asyncio.gather 并行执行
-
-        Args:
-            tasks: 同优先级的任务列表
-            intention_data: 意图识别结果
-            previous_results: 前序批次结果（不同优先级）
-
-        Returns:
-            执行结果列表
         """
         if len(tasks) == 1:
             task = tasks[0]
@@ -295,11 +303,27 @@ class OrchestrationAgent(AgentBase):
 
         return {"status": "success", "agent_name": agent_name, "data": result}
 
-    def _aggregate_results(self, results: List[Dict], intention_data: Dict[str, Any]) -> Dict[str, Any]:
-        """扁平化聚合结果"""
+    def _aggregate_results(
+        self,
+        results: List[Dict],
+        intention_data: Dict[str, Any],
+        execution_batches: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """
+        聚合多个智能体的结果
+
+        Args:
+            results: 所有智能体的执行结果
+            intention_data: 原始意图识别结果
+            execution_batches: 分批执行的摘要信息
+
+        Returns:
+            聚合后的最终结果
+        """
+        execution_batches = execution_batches or []
+
         agent_results = []
         errors = []
-
         for result in results:
             agent_results.append({
                 "agent_name": result["agent_name"],
@@ -321,15 +345,46 @@ class OrchestrationAgent(AgentBase):
         return {
             "status": overall,
             "reasoning": intention_data.get("reasoning", ""),
+            "intention": {
+                "intents": intention_data.get("intents", []),
+                "key_entities": intention_data.get("key_entities", {}),
+            },
             "key_entities": intention_data.get("key_entities", {}),
             "agents_executed": len(results),
             "errors": errors,
-            "results": agent_results
+            "execution_summary": self._build_execution_summary(results, execution_batches),
+            "execution_batches": execution_batches,
+            "results": agent_results,
+        }
+
+    def _build_execution_summary(self, results: List[Dict], execution_batches: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        生成面向展示层的执行摘要。
+
+        这个字段保留结构化信息，便于 CLI/测试脚本直接展示，而不必再自己推断执行顺序。
+        """
+        success_count = sum(1 for r in results if r["result"].get("status") == "success")
+        error_count = sum(1 for r in results if r["result"].get("status") == "error")
+
+        batch_lines = []
+        for batch in execution_batches:
+            priority = batch.get("priority", 0)
+            agents = batch.get("agents", [])
+            if agents:
+                batch_lines.append(f"P{priority}: {', '.join(agents)}")
+
+        return {
+            "total": len(results),
+            "success": success_count,
+            "error": error_count,
+            "batches": execution_batches,
+            "text": " | ".join(batch_lines) if batch_lines else "无执行批次",
         }
 
     def _update_memory(self, intention_data: Dict[str, Any], results: List[Dict]):
         """更新记忆系统（委托给 context.memory_updater.MemoryUpdater）"""
         if not self.memory_manager:
             return
+
         MemoryUpdater.update(self.memory_manager, results)
         logger.info("Memory updated after orchestration")
