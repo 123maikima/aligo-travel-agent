@@ -26,11 +26,11 @@ def _env_str(name: str, default: str) -> str:
 
 # LLM Configuration
 LLM_CONFIG = {
-    "api_key": "82df119f-41c2-4f44-bc20-f5ed0f540e0e",
-    "model_name": "doubao-seed-1-6-251015",
-    "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-    "temperature": 0.7,
-    "max_tokens": 8192,
+    "api_key": _env_str("LLM_API_KEY", "82df119f-41c2-4f44-bc20-f5ed0f540e0e"),
+    "model_name": _env_str("LLM_MODEL_NAME", "doubao-seed-1-6-251015"),
+    "base_url": _env_str("LLM_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3"),
+    "temperature": float(os.getenv("LLM_TEMPERATURE", "0.7")),
+    "max_tokens": _env_int("LLM_MAX_TOKENS", 8192),
 }
 
 # System Configuration

@@ -272,23 +272,18 @@ pip install ddgs==9.10.0                    # 网络搜索
 
 ### 2. 配置模型
 
-编辑 `config.py`，填入你的豆包大模型API密钥：
+编辑 `.env` 或直接设置环境变量，填入你的豆包大模型 API 密钥：
 
-```python
-LLM_CONFIG = {
-    "api_key": "your-api-key-here",  # 替换为你的API密钥
-    "model_name": "doubao-seed-1-6-flash-250828",
-    "base_url": "https://ark.cn-beijing.volces.com/api/v3",
-    "temperature": 0.7,
-    "max_tokens": 8192,
-}
+```bash
+cp .env.example .env
+# 然后修改 LLM_API_KEY
 ```
 
 **配置说明**：
-- `api_key`: 豆包大模型API密钥（必填）
-- `model_name`: 模型名称（推荐使用 flash 系列）
-- `temperature`: 控制生成的随机性（0-1，0.7为推荐值）
-- `max_tokens`: 最大输出token数（8192）
+- `LLM_API_KEY`: 豆包大模型 API 密钥（必填）
+- `LLM_MODEL_NAME`: 模型名称（推荐使用 flash 系列）
+- `LLM_TEMPERATURE`: 控制生成的随机性（0-1，0.7 为推荐值）
+- `LLM_MAX_TOKENS`: 最大输出 token 数（8192）
 
 ### 3. 初始化知识库
 
@@ -300,6 +295,36 @@ python .claude/skills/ask-question/script/init_knowledge_base.py
 
 ```bash
 python cli.py
+```
+
+### 5. Docker 启动
+
+项目已经提供 Dockerfile 和 `docker-compose.yml`，默认会同时启动：
+
+- `app`：主应用容器
+- `redis`：短期记忆缓存
+- `postgres`：长期记忆持久化
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+补充说明：
+
+- `app` 容器会在启动时等待 Redis 和 PostgreSQL 就绪，并自动初始化 PostgreSQL schema。
+- 长期记忆数据会保存在 Docker volume `app_data` 中。
+- RAG 知识库数据会保存在 Docker volume `rag_data` 中。
+- 如果你需要导入本地 JSON 长期记忆到 PostgreSQL，可以执行：
+
+```bash
+docker compose run --rm app python scripts/migrate_json_to_postgres.py
+```
+
+- 如果你需要初始化 RAG 知识库，可以执行：
+
+```bash
+docker compose run --rm app python .claude/skills/ask-question/script/init_knowledge_base.py
 ```
 
 ---
