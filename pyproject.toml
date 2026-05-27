@@ -21,6 +21,11 @@ dependencies = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "llm: tests that require a real LLM provider or API key",
+    "network: tests that require external network access",
+    "rag: tests that require local RAG/vector-store assets",
+]
 
 [[tool.uv.index]]
 name = "tuna"

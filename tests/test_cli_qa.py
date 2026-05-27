@@ -12,6 +12,10 @@ from datetime import datetime
 from typing import List, Dict
 import logging
 
+import pytest
+
+pytestmark = [pytest.mark.llm, pytest.mark.network, pytest.mark.rag]
+
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
