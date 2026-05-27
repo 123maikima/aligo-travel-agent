@@ -47,6 +47,7 @@ tests/results/
 # Claude local settings
 .claude/claudian-settings.json
 .claude/settings.local.json
+.claude/skills/*/data/
 
 # Personal documents (not part of project)
 *.pdf

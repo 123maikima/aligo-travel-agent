@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-pytestmark = [pytest.mark.llm, pytest.mark.network, pytest.mark.rag]
+pytestmark = [pytest.mark.llm, pytest.mark.network]
 
 # 添加项目根目录到路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

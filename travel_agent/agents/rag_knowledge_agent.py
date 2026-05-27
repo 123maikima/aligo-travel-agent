@@ -63,9 +63,10 @@ class RAGKnowledgeAgent(AgentBase):
         self.model = model
         
         if knowledge_base_path is None:
-            # Default to local data directory in skill folder
-            current_dir = Path(__file__).parent.parent
-            knowledge_base_path = str(current_dir / "data" / "rag_knowledge")
+            project_root = Path(__file__).resolve().parents[2]
+            knowledge_base_path = str(
+                project_root / ".claude" / "skills" / "ask-question" / "data" / "rag_knowledge"
+            )
 
         self.knowledge_base_path = Path(knowledge_base_path)
         self.collection_name = collection_name
@@ -141,6 +142,11 @@ class RAGKnowledgeAgent(AgentBase):
                 auto_id=False,
             )
             logger.info(f"Created new collection: {collection_name}")
+
+        try:
+            self.milvus_client.load_collection(collection_name)
+        except Exception as e:
+            logger.debug("Milvus collection load skipped or failed: %s", e)
 
         self.initialized = True
         self._milvus_db_path = milvus_db_path  # 保存路径用于重连

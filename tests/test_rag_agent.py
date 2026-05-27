@@ -15,6 +15,7 @@ import os
 import asyncio
 import json
 import time
+from pathlib import Path
 
 import pytest
 
@@ -23,6 +24,7 @@ pytestmark = [pytest.mark.llm, pytest.mark.rag]
 # 添加项目根目录到 Python 路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
+knowledge_base_path = Path(project_root) / ".claude" / "skills" / "ask-question" / "data" / "rag_knowledge"
 
 from agentscope.message import Msg
 from agentscope.model import OpenAIChatModel
@@ -60,7 +62,7 @@ async def test_rag_agent():
     agent = RAGKnowledgeAgent(
         name="RAGKnowledgeAgent",
         model=model,
-        knowledge_base_path="./data/rag_knowledge",
+        knowledge_base_path=str(knowledge_base_path),
         collection_name="business_travel_knowledge",
         top_k=3
     )

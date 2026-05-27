@@ -14,7 +14,7 @@ import logging
 
 import pytest
 
-pytestmark = [pytest.mark.llm, pytest.mark.network, pytest.mark.rag]
+pytestmark = [pytest.mark.llm, pytest.mark.network]
 
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))

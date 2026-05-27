@@ -1,0 +1,26 @@
+[
+  {
+    "id": "lodging_beijing",
+    "question": "北京出差的住宿标准是多少？",
+    "expected_terms": ["北京", "500"],
+    "category": "差旅规定"
+  },
+  {
+    "id": "reimbursement_deadline",
+    "question": "差旅费用应该在什么时候报销？",
+    "expected_terms": ["30", "天"],
+    "category": "报销规定"
+  },
+  {
+    "id": "booking_flight_advance",
+    "question": "机票应该提前多久预订比较好？",
+    "expected_terms": ["7", "14"],
+    "category": "预订指南"
+  },
+  {
+    "id": "flight_delay",
+    "question": "航班延误了应该怎么办？",
+    "expected_terms": ["改签", "凭证"],
+    "category": "应急指南"
+  }
+]
