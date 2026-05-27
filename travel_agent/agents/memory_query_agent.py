@@ -19,6 +19,9 @@ from typing import Optional, Union, List, Dict
 import json
 import logging
 
+from travel_agent.agents.protocol import AgentContext, AgentResult
+from travel_agent.llm.sdk import extract_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,40 +53,13 @@ class MemoryQueryAgent(AgentBase):
             Msg: 基于记忆的回答
         """
         if x is None:
-            return Msg(name=self.name, content=json.dumps({}), role="assistant")
+            return AgentResult.failure("无法获取用户查询").to_msg(self.name)
 
-        # 解析输入
-        if isinstance(x, list):
-            input_content = x[-1].content if x else "{}"
-        else:
-            input_content = x.content
-
-        try:
-            input_data = json.loads(input_content) if isinstance(input_content, str) else input_content
-        except json.JSONDecodeError:
-            input_data = {"context": {"rewritten_query": str(input_content)}}
-
-        # 获取用户查询
-        context = input_data.get("context", {})
-        user_query = context.get("rewritten_query", "")
-        if not user_query:
-            # 尝试从 recent_dialogue 获取最后一条用户消息
-            recent_dialogue = context.get("recent_dialogue", [])
-            if recent_dialogue:
-                for msg in reversed(recent_dialogue):
-                    if msg.get("role") == "user":
-                        user_query = msg.get("content", "")
-                        break
+        agent_context = AgentContext.from_input(x)
+        user_query = agent_context.query
 
         if not user_query:
-            return Msg(
-                name=self.name,
-                content=json.dumps({
-                    "status": "error",
-                    "message": "无法获取用户查询"
-                }),
-                role="assistant"
-            )
+            return AgentResult.failure("无法获取用户查询").to_msg(self.name)
 
         # 获取长期记忆
         trip_history = []
@@ -141,61 +117,31 @@ class MemoryQueryAgent(AgentBase):
                 {"role": "user", "content": prompt}
             ])
 
-            # 获取响应文本 - 处理异步生成器
-            answer = ""
-            if hasattr(response, '__aiter__'):
-                # 异步生成器，需要迭代获取内容
-                async for chunk in response:
-                    if isinstance(chunk, str):
-                        answer = chunk
-                    elif hasattr(chunk, 'content'):
-                        if isinstance(chunk.content, str):
-                            answer = chunk.content
-                        elif isinstance(chunk.content, list):
-                            for item in chunk.content:
-                                if isinstance(item, dict) and item.get('type') == 'text':
-                                    answer = item.get('text', '')
-            elif hasattr(response, 'text'):
-                answer = response.text
-            elif hasattr(response, 'content'):
-                answer = response.content
-            elif isinstance(response, dict) and 'content' in response:
-                answer = response['content']
-            else:
-                answer = str(response) if response else "无法生成回答"
+            answer = await extract_text(response) or "无法生成回答"
 
             if not answer:
                 answer = "无法基于记忆生成回答"
 
             logger.info(f"Memory query answered: {user_query[:50]}")
 
-            result = {
-                "status": "success",
-                "query": user_query,
-                "answer": answer,
-                "memory_sources": {
+            result = AgentResult.success(
+                query=user_query,
+                answer=answer,
+                memory_sources={
                     "trip_count": len(trip_history),
                     "has_preferences": any(v for v in preferences.values() if v),
                     "has_chat_summary": bool(chat_summary)
-                }
-            }
+                },
+            )
 
-            return Msg(name=self.name, content=json.dumps(result, ensure_ascii=False), role="assistant")
+            return result.to_msg(self.name)
 
         except Exception as e:
             logger.error(f"Memory query failed: {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
 
-            return Msg(
-                name=self.name,
-                content=json.dumps({
-                    "status": "error",
-                    "message": f"记忆查询失败: {str(e)}",
-                    "query": user_query
-                }),
-                role="assistant"
-            )
+            return AgentResult.failure(f"记忆查询失败: {str(e)}", query=user_query).to_msg(self.name)
 
     def _format_trip_history(self, trip_history: List[Dict]) -> str:
         """格式化旅行历史"""

@@ -150,21 +150,21 @@ class UnifiedChatModel:
 
         return normalized or [{"role": "user", "content": ""}]
 
-    async def _extract_text(self, response: Any) -> str:
+    async def extract_text(self, response: Any) -> str:
         if response is None:
             return ""
 
         if hasattr(response, "__aiter__"):
             chunks: List[str] = []
             async for chunk in response:
-                text = self._extract_text_sync(chunk)
+                text = self.extract_text_sync(chunk)
                 if text:
                     chunks.append(text)
             return "".join(chunks)
 
-        return self._extract_text_sync(response)
+        return self.extract_text_sync(response)
 
-    def _extract_text_sync(self, response: Any) -> str:
+    def extract_text_sync(self, response: Any) -> str:
         if response is None:
             return ""
         if isinstance(response, str):
@@ -184,7 +184,7 @@ class UnifiedChatModel:
     async def __call__(self, messages: Any) -> UnifiedLLMResponse:
         normalized_messages = self.normalize_messages(messages)
         raw_response = await self._client(normalized_messages)
-        content = await self._extract_text(raw_response)
+        content = await self.extract_text(raw_response)
         return UnifiedLLMResponse(
             content=content,
             raw=raw_response,
@@ -224,6 +224,39 @@ def create_chat_model(
         timeout=timeout if timeout is not None else float(config.get("timeout", default_timeout)),
         extra=config,
     )
+
+
+async def extract_text(response: Any) -> str:
+    """Extract text from a provider or AgentScope response."""
+    if response is None:
+        return ""
+    if hasattr(response, "__aiter__"):
+        chunks: List[str] = []
+        async for chunk in response:
+            text = extract_text_sync(chunk)
+            if text:
+                chunks.append(text)
+        return "".join(chunks)
+    return extract_text_sync(response)
+
+
+def extract_text_sync(response: Any) -> str:
+    """Synchronously extract text from common response shapes."""
+    if response is None:
+        return ""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        if "content" in response:
+            return UnifiedChatModel._normalize_content(response.get("content"))
+        if "text" in response:
+            return UnifiedChatModel._normalize_content(response.get("text"))
+        return str(response)
+    if hasattr(response, "text"):
+        return UnifiedChatModel._normalize_content(getattr(response, "text"))
+    if hasattr(response, "content"):
+        return UnifiedChatModel._normalize_content(getattr(response, "content"))
+    return str(response)
 
 
 def resolve_model_tier(agent_name: Optional[str] = None, default: str = "default") -> str:

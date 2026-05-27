@@ -8,6 +8,7 @@ from travel_agent.context.short_term_memory import ShortTermMemory
 from travel_agent.context.long_term_memory import LongTermMemory
 from travel_agent.context.redis_cache import RedisCache
 from travel_agent.config import POSTGRES_CONFIG
+from travel_agent.llm.sdk import extract_text
 import logging
 import json
 
@@ -239,25 +240,7 @@ class MemoryManager:
         try:
             # 调用模型（异步调用）
             response = await self.llm_model([{"role": "user", "content": summarization_prompt}])
-
-            # 处理异步生成器响应
-            summary = ""
-            if hasattr(response, '__aiter__'):
-                # 异步生成器，需要迭代获取内容
-                async for chunk in response:
-                    if isinstance(chunk, str):
-                        summary = chunk
-                    elif hasattr(chunk, 'content'):
-                        if isinstance(chunk.content, str):
-                            summary = chunk.content
-                        elif isinstance(chunk.content, list):
-                            for item in chunk.content:
-                                if isinstance(item, dict) and item.get('type') == 'text':
-                                    summary = item.get('text', '')
-            elif hasattr(response, 'content'):
-                summary = str(response.content)
-            else:
-                summary = str(response)
+            summary = await extract_text(response)
 
             logger.info(f"Generated long-term memory summary ({len(summary)} chars)")
 

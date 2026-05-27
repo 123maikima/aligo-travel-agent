@@ -12,6 +12,9 @@ from typing import Optional, Union, List
 import json
 import logging
 
+from travel_agent.agents.protocol import AgentContext, AgentResult
+from travel_agent.llm.sdk import extract_text
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,24 +28,11 @@ class EventCollectionAgent(AgentBase):
 
     async def reply(self, x: Optional[Union[Msg, List[Msg]]] = None) -> Msg:
         if x is None:
-            return Msg(name=self.name, content={}, role="assistant")
+            return AgentResult.failure("无法获取用户查询", missing_info=["所有信息"], extracted_count=0).to_msg(self.name)
 
-        # 解析输入内容
-        content = x.content if not isinstance(x, list) else x[-1].content
-
-        # 如果content是JSON字符串，解析它
-        if isinstance(content, str):
-            try:
-                data = json.loads(content)
-                context = data.get("context", {})
-                user_query = context.get("rewritten_query", "") or str(data)
-                user_preferences = context.get("user_preferences", {})
-            except json.JSONDecodeError:
-                user_query = content
-                user_preferences = {}
-        else:
-            user_query = str(content)
-            user_preferences = {}
+        agent_context = AgentContext.from_input(x)
+        user_query = agent_context.query or str(agent_context.payload)
+        user_preferences = agent_context.user_preferences
 
         # 构建用户背景信息
         background_info = ""
@@ -115,28 +105,7 @@ class EventCollectionAgent(AgentBase):
                 {"role": "user", "content": prompt}
             ])
 
-            # 获取响应文本 - 处理异步生成器
-            text = ""
-            if hasattr(response, '__aiter__'):
-                # 异步生成器，需要迭代获取内容
-                async for chunk in response:
-                    if isinstance(chunk, str):
-                        text = chunk
-                    elif hasattr(chunk, 'content'):
-                        if isinstance(chunk.content, str):
-                            text = chunk.content
-                        elif isinstance(chunk.content, list):
-                            for item in chunk.content:
-                                if isinstance(item, dict) and item.get('type') == 'text':
-                                    text = item.get('text', '')
-            elif hasattr(response, 'text'):
-                text = response.text
-            elif hasattr(response, 'content'):
-                text = response.content
-            elif isinstance(response, dict) and 'content' in response:
-                text = response['content']
-            else:
-                text = str(response) if response else ""
+            text = await extract_text(response)
 
             # 清理文本，移除markdown代码块标记
             text = text.strip()

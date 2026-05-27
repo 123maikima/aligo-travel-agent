@@ -26,6 +26,9 @@ import os
 import re
 from pathlib import Path
 
+from travel_agent.agents.protocol import AgentContext, AgentResult
+from travel_agent.llm.sdk import extract_text
+
 _GRPC_MAX_MS = '2147483647'  # gRPC 使用的 int32 上限，约 24.8 天
 os.environ['GRPC_KEEPALIVE_TIME_MS'] = _GRPC_MAX_MS
 os.environ['GRPC_KEEPALIVE_TIMEOUT_MS'] = '20000'
@@ -471,41 +474,15 @@ class RAGKnowledgeAgent(AgentBase):
         3. 结合知识生成答案
         """
         if not self.initialized:
-            return Msg(
-                name=self.name,
-                content=json.dumps({
-                    "status": "error",
-                    "message": "RAG Agent not initialized. Please install dependencies: pip install pymilvus sentence-transformers"
-                }),
-                role="assistant"
-            )
+            return AgentResult.failure(
+                "RAG Agent not initialized. Please install dependencies: pip install pymilvus sentence-transformers"
+            ).to_msg(self.name)
 
         if x is None:
-            return Msg(name=self.name, content=json.dumps({}), role="assistant")
+            return AgentResult.failure("无法获取用户查询").to_msg(self.name)
 
-        # 获取用户查询
-        if isinstance(x, list):
-            content = x[-1].content if x else ""
-        else:
-            content = x.content
-
-        # 尝试解析 JSON 输入 (来自 Orchestrator)
-        user_query = content
-        if isinstance(content, str) and content.strip().startswith('{'):
-            try:
-                import json
-                data = json.loads(content)
-                # 只要解析成功，就认为 content 是结构化数据，尝试提取 query
-                extracted_query = ""
-                if "context" in data and isinstance(data["context"], dict):
-                    extracted_query = data["context"].get("rewritten_query", "")
-                elif "rewritten_query" in data:
-                    extracted_query = data.get("rewritten_query", "")
-                
-                # 使用提取到的 query（即使为空，也比 JSON 字符串好）
-                user_query = extracted_query
-            except (json.JSONDecodeError, TypeError) as exc:
-                logger.debug("Failed to parse RAG request JSON: %s", exc)
+        agent_context = AgentContext.from_input(x)
+        user_query = agent_context.query
 
         # 检索相关知识
         retrieved_docs = self.search_knowledge(user_query)
@@ -556,29 +533,7 @@ class RAGKnowledgeAgent(AgentBase):
                     {"role": "user", "content": prompt}
                 ]
                 response = await self.model(messages)
-
-                # 获取响应内容 - 处理异步生成器
-                answer = ""
-                if hasattr(response, '__aiter__'):
-                    # 异步生成器，需要迭代获取内容
-                    async for chunk in response:
-                        if isinstance(chunk, str):
-                            answer = chunk
-                        elif hasattr(chunk, 'content'):
-                            if isinstance(chunk.content, str):
-                                answer = chunk.content
-                            elif isinstance(chunk.content, list):
-                                for item in chunk.content:
-                                    if isinstance(item, dict) and item.get('type') == 'text':
-                                        answer = item.get('text', '')
-                elif hasattr(response, 'text'):
-                    answer = response.text
-                elif hasattr(response, 'content'):
-                    answer = response.content
-                elif isinstance(response, dict) and 'content' in response:
-                    answer = response['content']
-                else:
-                    answer = str(response) if response else "无法生成答案"
+                answer = await extract_text(response)
 
                 if not answer:
                     answer = "无法生成答案"
@@ -587,7 +542,6 @@ class RAGKnowledgeAgent(AgentBase):
                 answer_str = answer.strip()
                 if answer_str.startswith("{") and answer_str.endswith("}"):
                     try:
-                        import json
                         json_obj = json.loads(answer_str)
                         # 如果 LLM 输出了 {"answer": "..."} 或 {"content": "..."}
                         if isinstance(json_obj, dict):

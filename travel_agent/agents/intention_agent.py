@@ -20,6 +20,7 @@ import json
 import logging
 import re
 from datetime import datetime
+from travel_agent.llm.sdk import extract_text_sync
 from travel_agent.utils.skill_loader import SkillLoader
 
 logger = logging.getLogger(__name__)
@@ -264,18 +265,6 @@ class IntentionAgent(AgentBase):
 
 请开始分析，直接输出JSON：
 """
-
-    def _extract_response_text_sync(self, response: Any) -> str:
-        """同步环境下提取模型响应文本"""
-        if hasattr(response, "text"):
-            text = response.text
-        elif hasattr(response, "content"):
-            text = response.content
-        elif isinstance(response, dict) and "content" in response:
-            text = response["content"]
-        else:
-            text = str(response) if response else ""
-        return str(text).strip()
 
     def _strip_code_fences(self, text: str) -> str:
         """移除 markdown 代码块包装"""
@@ -585,7 +574,7 @@ class IntentionAgent(AgentBase):
                 raise RuntimeError("IntentionAgent model is not initialized")
 
             response = await self.model(messages)
-            text = self._extract_response_text_sync(response)
+            text = extract_text_sync(response).strip()
             # 先做 JSON 解析，再做字段归一化，保证下游调度契约稳定。
             result = self._normalize_result(self._parse_json_payload(text), user_query)
         except Exception as e:
