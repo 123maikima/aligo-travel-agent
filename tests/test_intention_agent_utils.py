@@ -15,7 +15,7 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agents.intention_agent import IntentionAgent
+from travel_agent.agents.intention_agent import IntentionAgent
 
 
 def test_legacy_agent_name_normalization():

@@ -1,6 +1,11 @@
 ---
 name: plan-trip
 description: Use this skill when the user wants to plan a trip or asks for itinerary planning. Triggers when user says "规划行程", "安排路线", "我要去XX", "从XX到XX", or provides trip details like dates and destinations. This skill orchestrates IntentionAgent, EventCollectionAgent, and ItineraryPlanningAgent; all agents take model=model and are async.
+agent_name: itinerary_planning
+agent_module: travel_agent.agents.itinerary_planning_agent
+agent_class: ItineraryPlanningAgent
+aliases:
+  - plan-trip
 ---
 
 # Plan Trip (行程规划)
@@ -19,7 +24,7 @@ description: Use this skill when the user wants to plan a trip or asks for itine
 
 ## 统一模型与异步
 
-- 先创建 `OpenAIChatModel`（来自 `config.LLM_CONFIG`），再传给各 Agent 的 **model** 参数（本项目无 `model_config_name`）。
+- 先通过 `create_chat_model()` 创建统一模型，再传给各 Agent 的 **model** 参数（本项目无 `model_config_name`）。
 - 三个 Agent 的 `reply()` 都是 **async**，需 **await**。
 
 ## 调用示例（简化链式）
@@ -28,22 +33,15 @@ description: Use this skill when the user wants to plan a trip or asks for itine
 import asyncio
 import json
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
-from config import LLM_CONFIG
-from agents.intention_agent import IntentionAgent
-from agents.event_collection_agent import EventCollectionAgent
-from agents.itinerary_planning_agent import ItineraryPlanningAgent
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.llm import create_chat_model
+from travel_agent.agents.intention_agent import IntentionAgent
+from travel_agent.agents.event_collection_agent import EventCollectionAgent
+from travel_agent.agents.itinerary_planning_agent import ItineraryPlanningAgent
 
 async def plan_trip(user_query: str):
     init_agentscope()
-    model = OpenAIChatModel(
-        model_name=LLM_CONFIG["model_name"],
-        api_key=LLM_CONFIG["api_key"],
-        client_kwargs={"base_url": LLM_CONFIG["base_url"], "timeout": 60},
-        temperature=LLM_CONFIG.get("temperature", 0.7),
-        max_tokens=LLM_CONFIG.get("max_tokens", 2000),
-    )
+    model = create_chat_model(timeout=60)
     user_msg = Msg(name="user", content=user_query, role="user")
 
     # 1. 意图识别

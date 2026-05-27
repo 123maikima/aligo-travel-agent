@@ -25,14 +25,14 @@ sys.path.insert(0, project_root)
 
 from agentscope.model import OpenAIChatModel
 from agentscope.message import Msg
-from config_agentscope import init_agentscope
-from config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, REDIS_CONFIG, POSTGRES_CONFIG
-from context.memory_manager import MemoryManager
-from context.redis_cache import RedisCache
-from agents.intention_agent import IntentionAgent
-from agents.orchestration_agent import OrchestrationAgent
-from agents.lazy_agent_registry import LazyAgentRegistry
-from utils.llm_resilience import retry_with_backoff
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, REDIS_CONFIG, POSTGRES_CONFIG
+from travel_agent.context.memory_manager import MemoryManager
+from travel_agent.context.redis_cache import RedisCache
+from travel_agent.agents.intention_agent import IntentionAgent
+from travel_agent.agents.orchestration_agent import OrchestrationAgent
+from travel_agent.agents.lazy_agent_registry import LazyAgentRegistry
+from travel_agent.utils.llm_resilience import retry_with_backoff
 
 
 @dataclass

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def capture_display_results(result_data: dict) -> str:
     """调用 cli 的 _display_results，将输出捕获为字符串（无 ANSI 颜色）。"""
     from rich.console import Console
-    from cli import AligoCLI
+    from travel_agent.cli import AligoCLI
 
     capture = StringIO()
     console = Console(file=capture, force_terminal=False, no_color=True)
@@ -56,13 +56,13 @@ async def main():
     # 初始化系统 - 完全按照 CLI 的方式
     print("\n[1/3] 初始化系统...")
 
-    from config import LLM_CONFIG
-    from config_agentscope import init_agentscope
+    from travel_agent.config import LLM_CONFIG
+    from travel_agent.config_agentscope import init_agentscope
     from agentscope.model import OpenAIChatModel
-    from context.memory_manager import MemoryManager
-    from agents.intention_agent import IntentionAgent
-    from agents.orchestration_agent import OrchestrationAgent
-    from agents.lazy_agent_registry import LazyAgentRegistry
+    from travel_agent.context.memory_manager import MemoryManager
+    from travel_agent.agents.intention_agent import IntentionAgent
+    from travel_agent.agents.orchestration_agent import OrchestrationAgent
+    from travel_agent.agents.lazy_agent_registry import LazyAgentRegistry
     # Removed manual imports of sub-agents as they are now dynamically loaded
     from agentscope.message import Msg
 

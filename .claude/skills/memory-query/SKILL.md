@@ -1,6 +1,11 @@
 ---
 name: memory-query
 description: Use this skill when the user asks about their own history, past trips, or saved preferences. Triggers when user asks "我去过哪些地方", "我上次去北京是什么时候", "我之前说过什么偏好", "我的旅行记录". This skill uses MemoryQueryAgent and requires a MemoryManager (user_id, session_id) to access long-term memory.
+agent_name: memory_query
+agent_module: travel_agent.agents.memory_query_agent
+agent_class: MemoryQueryAgent
+aliases:
+  - memory-query
 ---
 
 # Memory Query (记忆查询)
@@ -28,21 +33,14 @@ description: Use this skill when the user asks about their own history, past tri
 import asyncio
 import json
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
-from config import LLM_CONFIG
-from context.memory_manager import MemoryManager
-from agents.memory_query_agent import MemoryQueryAgent
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.llm import create_chat_model
+from travel_agent.context.memory_manager import MemoryManager
+from travel_agent.agents.memory_query_agent import MemoryQueryAgent
 
 async def memory_query(user_query: str, user_id: str = "default_user", session_id: str = "default"):
     init_agentscope()
-    model = OpenAIChatModel(
-        model_name=LLM_CONFIG["model_name"],
-        api_key=LLM_CONFIG["api_key"],
-        client_kwargs={"base_url": LLM_CONFIG["base_url"], "timeout": 60},
-        temperature=LLM_CONFIG.get("temperature", 0.7),
-        max_tokens=LLM_CONFIG.get("max_tokens", 2000),
-    )
+    model = create_chat_model(timeout=60)
     memory_manager = MemoryManager(user_id=user_id, session_id=session_id, llm_model=model)
     agent = MemoryQueryAgent(
         name="MemoryQueryAgent",

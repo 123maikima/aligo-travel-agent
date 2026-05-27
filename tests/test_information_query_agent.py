@@ -27,11 +27,11 @@ sys.path.insert(0, project_root)
 
 from agentscope.message import Msg
 from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
+from travel_agent.config_agentscope import init_agentscope
 # 导入 skill 目录下的 agent
 sys.path.insert(0, os.path.join(project_root, '.claude', 'skills', 'query-info', 'script'))
-from agent import InformationQueryAgent
-from config import LLM_CONFIG
+from travel_agent.agents.information_query_agent import InformationQueryAgent
+from travel_agent.config import LLM_CONFIG
 
 
 async def test_information_query_agent():

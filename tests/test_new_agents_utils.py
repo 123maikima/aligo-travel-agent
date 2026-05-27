@@ -9,9 +9,9 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agents.information_query_agent import InformationQueryAgent
-from agents.preference_agent import PreferenceAgent
-from agents.itinerary_planning_agent import ItineraryPlanningAgent
+from travel_agent.agents.information_query_agent import InformationQueryAgent
+from travel_agent.agents.preference_agent import PreferenceAgent
+from travel_agent.agents.itinerary_planning_agent import ItineraryPlanningAgent
 
 
 def test_information_query_helpers():

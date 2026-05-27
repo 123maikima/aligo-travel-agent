@@ -1,6 +1,11 @@
 ---
 name: preference
 description: Use this skill when the user states or updates their preferences, e.g. hotel brands, airlines, home location, seat preference. Triggers when user says "我喜欢住汉庭", "我还喜欢如家", "我搬家到上海了", "我常坐东航". This skill uses PreferenceAgent and requires a MemoryManager to persist preferences; when used standalone, apply returned preferences via memory_manager.long_term.save_preference.
+agent_name: preference
+agent_module: travel_agent.agents.preference_agent
+agent_class: PreferenceAgent
+aliases:
+  - preference
 ---
 
 # Preference (偏好管理)
@@ -29,21 +34,14 @@ description: Use this skill when the user states or updates their preferences, e
 import asyncio
 import json
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
-from config import LLM_CONFIG
-from context.memory_manager import MemoryManager
-from agents.preference_agent import PreferenceAgent
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.llm import create_chat_model
+from travel_agent.context.memory_manager import MemoryManager
+from travel_agent.agents.preference_agent import PreferenceAgent
 
 async def save_preference(user_query: str, user_id: str = "default_user", session_id: str = "default"):
     init_agentscope()
-    model = OpenAIChatModel(
-        model_name=LLM_CONFIG["model_name"],
-        api_key=LLM_CONFIG["api_key"],
-        client_kwargs={"base_url": LLM_CONFIG["base_url"], "timeout": 60},
-        temperature=LLM_CONFIG.get("temperature", 0.7),
-        max_tokens=LLM_CONFIG.get("max_tokens", 2000),
-    )
+    model = create_chat_model(timeout=60)
     memory_manager = MemoryManager(user_id=user_id, session_id=session_id, llm_model=model)
     agent = PreferenceAgent(name="PreferenceAgent", model=model, memory_manager=memory_manager)
     user_msg = Msg(name="user", content=user_query, role="user")

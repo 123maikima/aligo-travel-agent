@@ -33,4 +33,4 @@ RUN useradd --create-home --shell /bin/bash appuser \
 USER appuser
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["python", "cli.py"]
+CMD ["python", "travel_agent/cli.py"]

@@ -39,7 +39,7 @@ fi
 
 if [[ "${POSTGRES_ENABLED:-false}" == "true" ]]; then
   wait_for_tcp "${POSTGRES_HOST:-postgres}" "${POSTGRES_PORT:-5432}" "PostgreSQL"
-  python scripts/init_postgres_schema.py
+  python travel_agent/scripts/init_postgres_schema.py
 fi
 
 exec "$@"

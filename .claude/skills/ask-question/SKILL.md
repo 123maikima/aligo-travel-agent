@@ -1,6 +1,11 @@
 ---
 name: ask-question
 description: Use this skill when the user asks questions about travel policies, reimbursement, booking guides, city information, or any travel-related questions. Triggers when user asks "XX标准是多少", "如何XX", "XX怎么办", or any question format. This skill uses RAGKnowledgeAgent to retrieve answers from the knowledge base.
+agent_name: rag_knowledge
+agent_module: travel_agent.agents.rag_knowledge_agent
+agent_class: RAGKnowledgeAgent
+aliases:
+  - ask-question
 ---
 
 # Ask Travel Question (RAG 知识库问答)
@@ -15,7 +20,7 @@ description: Use this skill when the user asks questions about travel policies, 
 ## Agent
 
 - **RAGKnowledgeAgent** (`agents/rag_knowledge_agent.py`)
-- 所有子 Agent 均使用 **model 对象**（非 model_config_name），需先创建 `OpenAIChatModel`
+- 所有子 Agent 均使用 **model 对象**（非 model_config_name），需先通过 `create_chat_model()` 创建统一模型
 - **异步**：`reply()` 为 `async`，需 `await`
 
 ## 初始化与调用
@@ -23,22 +28,15 @@ description: Use this skill when the user asks questions about travel policies, 
 ```python
 import asyncio
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
-from config import LLM_CONFIG
-from agents.rag_knowledge_agent import RAGKnowledgeAgent
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.llm import create_chat_model
+from travel_agent.agents.rag_knowledge_agent import RAGKnowledgeAgent
 import json
 
 async def ask_question(user_query: str):
     init_agentscope()
-    model = OpenAIChatModel(
-        model_name=LLM_CONFIG["model_name"],
-        api_key=LLM_CONFIG["api_key"],
-        client_kwargs={"base_url": LLM_CONFIG["base_url"], "timeout": 60},
-        temperature=LLM_CONFIG.get("temperature", 0.7),
-        max_tokens=LLM_CONFIG.get("max_tokens", 2000),
-    )
-    # 嵌入模型路径从 config.RAG_CONFIG 读取，默认 data/models/bge-small-zh-v1.5
+    model = create_chat_model(timeout=60)
+    # 嵌入模型路径从 config.RAG_CONFIG 读取，默认 data/models/bge-m3
     rag_agent = RAGKnowledgeAgent(
         name="RAGKnowledgeAgent",
         model=model,
@@ -47,7 +45,7 @@ async def ask_question(user_query: str):
         top_k=3,
     )
     if not getattr(rag_agent, "initialized", True):
-        return {"error": "RAG 未初始化，请先运行 python scripts/init_knowledge_base.py"}
+        return {"error": "RAG 未初始化，请先运行 python travel_agent/scripts/init_knowledge_base.py"}
     user_msg = Msg(name="user", content=user_query, role="user")
     result = await rag_agent.reply(user_msg)
     return json.loads(result.content) if isinstance(result.content, str) else result.content
@@ -68,7 +66,7 @@ data = asyncio.run(ask_question("北京的住宿标准是多少？"))
 
 - 路径：`data/rag_knowledge/`（Milvus Lite）
 - 源文档：`data/documents/`，共 8 类（差旅标准、报销、预订、FAQ、紧急处理、平台指南、城市指南、环保）
-- 首次使用前需执行：`python scripts/init_knowledge_base.py`
+- 首次使用前需执行：`python travel_agent/scripts/init_knowledge_base.py`
 
 
 ## 回答生成指南

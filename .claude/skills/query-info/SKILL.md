@@ -1,6 +1,11 @@
 ---
 name: query-info
 description: Use this skill when the user wants to query real-time information like weather or general web search. Triggers when user asks "天气怎么样", "XX天气", "查一下XX", "搜索XX". This skill uses InformationQueryAgent (weather via wttr.in, web search via DDGS). For travel standards or policy questions use ask-question (RAG) instead.
+agent_name: information_query
+agent_module: travel_agent.agents.information_query_agent
+agent_class: InformationQueryAgent
+aliases:
+  - query-info
 ---
 
 # Query Information (天气与网络搜索)
@@ -28,21 +33,14 @@ description: Use this skill when the user wants to query real-time information l
 ```python
 import asyncio
 from agentscope.message import Msg
-from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
-from config import LLM_CONFIG
-from agents.information_query_agent import InformationQueryAgent
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.llm import create_chat_model
+from travel_agent.agents.information_query_agent import InformationQueryAgent
 import json
 
 async def query_info(user_query: str):
     init_agentscope()
-    model = OpenAIChatModel(
-        model_name=LLM_CONFIG["model_name"],
-        api_key=LLM_CONFIG["api_key"],
-        client_kwargs={"base_url": LLM_CONFIG["base_url"], "timeout": 60},
-        temperature=LLM_CONFIG.get("temperature", 0.7),
-        max_tokens=LLM_CONFIG.get("max_tokens", 2000),
-    )
+    model = create_chat_model(timeout=60)
     agent = InformationQueryAgent(name="InformationQueryAgent", model=model)
     user_msg = Msg(name="user", content=user_query, role="user")
     result = await agent.reply(user_msg)

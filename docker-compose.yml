@@ -49,12 +49,101 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
       POSTGRES_ENABLED: "true"
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-data/models/bge-m3}
+      RAG_DOCUMENTS_DIR: ${RAG_DOCUMENTS_DIR:-data/documents}
+      RAG_RETRIEVAL_MODE: ${RAG_RETRIEVAL_MODE:-hybrid}
+      RAG_DENSE_TOP_K: ${RAG_DENSE_TOP_K:-10}
+      RAG_SPARSE_TOP_K: ${RAG_SPARSE_TOP_K:-10}
+      RAG_FINAL_TOP_K: ${RAG_FINAL_TOP_K:-3}
+      RAG_RRF_K: ${RAG_RRF_K:-60}
+      LLM_TIER_DEFAULT: ${LLM_TIER_DEFAULT:-default}
+      LLM_TIER_INTENTION_AGENT: ${LLM_TIER_INTENTION_AGENT:-reasoning}
+      LLM_TIER_ITINERARY_PLANNING: ${LLM_TIER_ITINERARY_PLANNING:-reasoning}
+      LLM_TIER_RAG_KNOWLEDGE: ${LLM_TIER_RAG_KNOWLEDGE:-reasoning}
+      LLM_TIER_EVENT_COLLECTION: ${LLM_TIER_EVENT_COLLECTION:-fast}
+      LLM_TIER_PREFERENCE: ${LLM_TIER_PREFERENCE:-fast}
+      LLM_TIER_MEMORY_QUERY: ${LLM_TIER_MEMORY_QUERY:-fast}
+      LLM_TIER_INFORMATION_QUERY: ${LLM_TIER_INFORMATION_QUERY:-fast}
+      LLM_TIER_MEMORY_SUMMARY: ${LLM_TIER_MEMORY_SUMMARY:-fast}
+      API_JWT_SECRET: ${API_JWT_SECRET:-replace-me}
+      API_JWT_ALGORITHM: ${API_JWT_ALGORITHM:-HS256}
+      API_JWT_ISSUER: ${API_JWT_ISSUER:-travel-agent}
+      API_ACCESS_TOKEN_TTL_MINUTES: ${API_ACCESS_TOKEN_TTL_MINUTES:-720}
+      API_REQUIRE_AUTH: ${API_REQUIRE_AUTH:-true}
     volumes:
       - app_data:/app/data
+      - ./data/models:/app/data/models:ro
+      - ./data/documents:/app/data/documents:ro
       - rag_data:/app/.claude/skills/ask-question/data
     stdin_open: true
     tty: true
-    command: ["python", "cli.py"]
+    command: ["python", "travel_agent/cli.py"]
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_ENABLED: "true"
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-travel_agent}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+      POSTGRES_ENABLED: "true"
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-data/models/bge-m3}
+      RAG_DOCUMENTS_DIR: ${RAG_DOCUMENTS_DIR:-data/documents}
+      RAG_RETRIEVAL_MODE: ${RAG_RETRIEVAL_MODE:-hybrid}
+      RAG_DENSE_TOP_K: ${RAG_DENSE_TOP_K:-10}
+      RAG_SPARSE_TOP_K: ${RAG_SPARSE_TOP_K:-10}
+      RAG_FINAL_TOP_K: ${RAG_FINAL_TOP_K:-3}
+      RAG_RRF_K: ${RAG_RRF_K:-60}
+      LLM_TIER_DEFAULT: ${LLM_TIER_DEFAULT:-default}
+      LLM_TIER_INTENTION_AGENT: ${LLM_TIER_INTENTION_AGENT:-reasoning}
+      LLM_TIER_ITINERARY_PLANNING: ${LLM_TIER_ITINERARY_PLANNING:-reasoning}
+      LLM_TIER_RAG_KNOWLEDGE: ${LLM_TIER_RAG_KNOWLEDGE:-reasoning}
+      LLM_TIER_EVENT_COLLECTION: ${LLM_TIER_EVENT_COLLECTION:-fast}
+      LLM_TIER_PREFERENCE: ${LLM_TIER_PREFERENCE:-fast}
+      LLM_TIER_MEMORY_QUERY: ${LLM_TIER_MEMORY_QUERY:-fast}
+      LLM_TIER_INFORMATION_QUERY: ${LLM_TIER_INFORMATION_QUERY:-fast}
+      LLM_TIER_MEMORY_SUMMARY: ${LLM_TIER_MEMORY_SUMMARY:-fast}
+      API_JWT_SECRET: ${API_JWT_SECRET:-replace-me}
+      API_JWT_ALGORITHM: ${API_JWT_ALGORITHM:-HS256}
+      API_JWT_ISSUER: ${API_JWT_ISSUER:-travel-agent}
+      API_ACCESS_TOKEN_TTL_MINUTES: ${API_ACCESS_TOKEN_TTL_MINUTES:-720}
+      API_REQUIRE_AUTH: ${API_REQUIRE_AUTH:-true}
+    volumes:
+      - app_data:/app/data
+      - ./data/models:/app/data/models:ro
+      - ./data/documents:/app/data/documents:ro
+      - rag_data:/app/.claude/skills/ask-question/data
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "travel_agent.web_api:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      web:
+        condition: service_started
+    ports:
+      - "3000:3000"
 
 volumes:
   redis_data:

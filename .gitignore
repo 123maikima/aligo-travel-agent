@@ -27,6 +27,10 @@ Thumbs.db
 
 # Data - user data and model weights
 data/
+!data/
+data/*
+!data/documents/
+!data/documents/*.txt
 
 # Milvus Lite DB
 *.db

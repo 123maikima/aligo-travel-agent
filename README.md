@@ -120,7 +120,7 @@
 |------|------|
 | **熔断器** | 连续失败若干次后暂停调用 LLM，直接提示「服务暂时不可用」；一段时间后自动半开试探恢复。 |
 | **重试与退避** | 对意图识别、编排两次 LLM 调用做有限次重试，仅对超时、429、5xx 等可重试错误生效，采用指数退避。 |
-| **健康检查** | 会话内输入 `health` 可查看熔断状态并探测 LLM 是否可达；命令行执行 `python cli.py health` 可单独做一次探测（退出码 0/1，便于监控）。 |
+| **健康检查** | 会话内输入 `health` 可查看熔断状态并探测 LLM 是否可达；命令行执行 `python travel_agent/cli.py health` 可单独做一次探测（退出码 0/1，便于监控）。 |
 
 配置见 `config.py` 中的 `RESILIENCE_CONFIG`（重试次数、熔断阈值、恢复时间等）。
 
@@ -213,15 +213,15 @@ python tests/test_memory_system.py
 
 **技术方案**：
 - **向量数据库**: Milvus（本地存储）
-- **Embedding模型**: BGE-small-zh-v1.5（中文向量化，本地部署 `data/models/bge-small-zh-v1.5`）
+- **Embedding模型**: BGE-m3（多语言长上下文向量化，本地部署 `data/models/bge-m3`）
 - **文档处理**: 智能分块（Chunking）+ 滑动窗口切分
-- **检索算法**: 余弦相似度检索（Top-K=3）
+- **检索算法**: Dense 向量检索 + BM25 稀疏检索 + RRF 融合排序（默认 Dense Top10、Sparse Top10、最终 Top3）
 - **可追溯性**: 返回文档来源，支持知识溯源
 - **准确率**: 95%（知识库问答准确率）
 
 **初始化知识库**：
 ```bash
-python .claude/skills/ask-question/script/init_knowledge_base.py
+python travel_agent/scripts/init_knowledge_base.py
 ```
 
 **知识库内容**（8类文档）：
@@ -280,21 +280,24 @@ cp .env.example .env
 ```
 
 **配置说明**：
+- `LLM_PROVIDER`: 模型供应商，支持 OpenAI-compatible 的 `doubao`、`openai`、`deepseek`、`qwen` 等
 - `LLM_API_KEY`: 豆包大模型 API 密钥（必填）
 - `LLM_MODEL_NAME`: 模型名称（推荐使用 flash 系列）
 - `LLM_TEMPERATURE`: 控制生成的随机性（0-1，0.7 为推荐值）
 - `LLM_MAX_TOKENS`: 最大输出 token 数（8192）
+- `LLM_FAST_*`: 快速模型档位，用于事项收集、偏好更新、记忆查询等低复杂度任务
+- `LLM_REASONING_*`: 推理模型档位，用于意图识别、RAG问答、行程规划等高复杂度任务
 
 ### 3. 初始化知识库
 
 ```bash
-python .claude/skills/ask-question/script/init_knowledge_base.py
+python travel_agent/scripts/init_knowledge_base.py
 ```
 
 ### 4. 启动系统
 
 ```bash
-python cli.py
+python travel_agent/cli.py
 ```
 
 ### 5. Docker 启动
@@ -314,17 +317,18 @@ docker compose up --build
 
 - `app` 容器会在启动时等待 Redis 和 PostgreSQL 就绪，并自动初始化 PostgreSQL schema。
 - 长期记忆数据会保存在 Docker volume `app_data` 中。
+- 如果你本地准备了 Embedding 模型，可以放在 `./data/models/bge-m3`，Docker 会只读挂载到容器内对应路径。
 - RAG 知识库数据会保存在 Docker volume `rag_data` 中。
 - 如果你需要导入本地 JSON 长期记忆到 PostgreSQL，可以执行：
 
 ```bash
-docker compose run --rm app python scripts/migrate_json_to_postgres.py
+docker compose run --rm app python travel_agent/scripts/migrate_json_to_postgres.py
 ```
 
 - 如果你需要初始化 RAG 知识库，可以执行：
 
 ```bash
-docker compose run --rm app python .claude/skills/ask-question/script/init_knowledge_base.py
+docker compose run --rm app python travel_agent/scripts/init_knowledge_base.py
 ```
 
 ---
@@ -393,7 +397,7 @@ docker compose run --rm app python .claude/skills/ask-question/script/init_knowl
 ### 启动
 
 ```bash
-python cli.py
+python travel_agent/cli.py
 ```
 
 **启动速度**: 约 3 秒（采用LazyAgentRegistry懒加载技术）
@@ -410,7 +414,63 @@ python cli.py
 | `preferences` | 查看用户偏好 |
 | `exit` | 退出程序 |
 
-单独做健康检查（不进入交互）：`python cli.py health`，返回 `OK` / `FAIL: ...`，退出码 0/1。
+单独做健康检查（不进入交互）：`python travel_agent/cli.py health`，返回 `OK` / `FAIL: ...`，退出码 0/1。
+
+---
+
+## Web API 使用指南
+
+项目提供了一个基于 FastAPI + React 的 Web 界面，支持 JWT 鉴权、会话管理、普通 JSON 响应和 SSE 流式响应。
+
+### 本地启动
+
+```bash
+uvicorn travel_agent.web_api:app --host 0.0.0.0 --port 8000
+```
+
+### Docker 启动
+
+```bash
+docker compose up --build web frontend
+```
+
+### 接口
+
+- `POST /api/v1/auth/token`：签发 JWT
+- `GET /api/v1/auth/me`：查看当前身份
+- `POST /api/v1/auth/refresh`：刷新 JWT
+- `GET /api/v1/sessions/current`：查看当前会话
+- `POST /api/v1/sessions/new`：创建新会话
+- `POST /api/v1/sessions/close`：关闭当前会话
+- `GET /api/v1/sessions`：查看当前用户会话列表
+- `GET /health`：检查 LLM 和熔断器状态
+- `POST /api/v1/chat/sync`：同步返回完整结果
+- `POST /api/v1/chat`：SSE 流式返回执行过程
+
+### 前端功能
+
+- JWT 登录与刷新
+- 会话创建、切换、关闭
+- SSE 流式聊天
+- 任务状态、意图与 Agent 事件可视化
+- 原始执行结果面板
+
+### 请求示例
+
+```bash
+TOKEN=$(curl -s http://localhost:8000/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "default_user"
+  }' | jq -r .access_token)
+
+curl -N http://localhost:8000/api/v1/chat \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "我想从北京去杭州出差三天"
+  }'
+```
 
 ---
 
@@ -437,10 +497,23 @@ python tests/test_orchestration.py  # 协调系统
 
 ```
 shanglv/
-├── agents/                          # 核心编排层
-│   ├── intention_agent.py           # 意图识别（语义理解）
-│   ├── orchestration_agent.py       # 协调器（并行调度）
-│   └── lazy_agent_registry.py       # 智能体插件注册器（懒加载）
+├── travel_agent/                    # 主代码包
+│   ├── cli.py                       # CLI 主程序
+│   ├── config.py                    # 配置文件
+│   ├── config_agentscope.py         # AgentScope 初始化与模型配置
+│   ├── agents/                      # 核心编排层
+│   │   ├── intention_agent.py       # 意图识别（语义理解）
+│   │   ├── orchestration_agent.py   # 协调器（并行调度）
+│   │   └── lazy_agent_registry.py   # 智能体插件注册器（懒加载）
+│   ├── context/                     # 记忆系统
+│   │   ├── memory_manager.py        # 记忆管理器
+│   │   ├── short_term_memory.py     # 短期记忆
+│   │   └── long_term_memory.py      # 长期记忆（支持 PostgreSQL + JSON 兜底）
+│   └── utils/                       # 工具与连接可用性
+│       ├── circuit_breaker.py       # 熔断器
+│       ├── llm_resilience.py        # 重试退避、健康检查
+│       ├── json_parser.py           # JSON 解析
+│       └── skill_loader.py          # Skill 加载器
 ├── .claude/skills/                  # Skill Plugins (子智能体)
 │   ├── ask-question/                # 知识库问答 Skill
 │   │   ├── script/                  # 代码 (agent.py, init_script)
@@ -451,27 +524,19 @@ shanglv/
 │   ├── preference/                  # 偏好管理 Skill
 │   ├── query-info/                  # 信息查询 Skill
 │   └── memory-query/                # 记忆查询 Skill
-├── context/                         # 记忆系统
-│   ├── memory_manager.py            # 记忆管理器
-│   ├── short_term_memory.py         # 短期记忆
-│   └── long_term_memory.py          # 长期记忆（支持 PostgreSQL + JSON 兜底）
+├── docs/                            # 项目文档
+│   ├── TECHNICAL_REPORT.md          # 技术报告
+│   └── proj_question.md             # 项目说明与面试问答
 ├── data/
 │   ├── memory/                      # 长期记忆 JSON 兜底与迁移来源（user_id.json）
+│   ├── documents/                   # RAG 知识文档
 │   └── models/                      # 本地模型文件
-│       └── bge-small-zh-v1.5/       # BGE中文Embedding模型
+│       └── bge-m3/                  # BGE-m3 Embedding模型
 ├── tests/                           # 测试脚本
 │   ├── test_cli_qa.py               # 端到端集成测试
 │   ├── test_memory_system.py        # 记忆系统测试
 │   ├── test_intention_agent.py      # 意图识别测试
 │   └── test_orchestration.py        # 协调系统测试
-├── utils/                           # 工具与连接可用性
-│   ├── circuit_breaker.py           # 熔断器
-│   ├── llm_resilience.py            # 重试退避、健康检查
-│   ├── json_parser.py               # JSON 解析
-│   └── skill_loader.py              # Skill 加载器
-├── cli.py                           # CLI 主程序
-├── config.py                        # 配置文件
-├── config_agentscope.py             # AgentScope 初始化与模型配置
 └── README.md                        # 本文件
 ```
 
@@ -489,9 +554,9 @@ shanglv/
 - 🔍 **Milvus** - 向量数据库（本地存储，RAG知识库）
 
 ### 向量化与检索
-- 🧠 **BGE-small-zh-v1.5** - 中文Embedding模型（本地部署）
+- 🧠 **BGE-m3** - 多语言长上下文Embedding模型（本地部署）
 - 📚 **Sentence-Transformers 5.2.3** - 向量化工具库
-- 🎯 **余弦相似度检索** - Top-K检索算法
+- 🎯 **Dense + BM25 + RRF** - 向量检索与稀疏检索融合排序
 
 ### 联网与搜索
 - 🌐 **DuckDuckGo (DDGS 9.10.0)** - 免费网络搜索引擎
@@ -508,6 +573,7 @@ shanglv/
 - 🔁 **指数退避重试** - 自动重试失败请求（最大3次）
 - 🩺 **熔断器机制** - 连续失败后暂停调用
 - 💊 **健康检查** - 实时监控LLM服务可用性
+- 🔭 **全链路可观测性** - Trace ID、Agent事件、JSONL指标与本地汇总脚本
 
 ### 用户界面
 - 🖥️ **Rich 13.9.4** - 精美的CLI终端界面
@@ -517,9 +583,11 @@ shanglv/
 ## ⚠️ 注意事项
 
 ### 模型配置
-- 必须配置豆包大模型API密钥（在 `config.py` 中）
-- 推荐使用 flash 系列模型（响应速度快）
-- BGE Embedding模型需下载到 `data/models/bge-small-zh-v1.5/`
+- 通过 `LLM_PROVIDER` 选择模型供应商，当前支持 OpenAI-compatible 协议的 `doubao`、`openai`、`deepseek`、`qwen`、`moonshot`、`zhipu` 等
+- 通过 `travel_agent.llm.create_chat_model()` 统一创建 LLM，Agent 层只接收统一模型对象，避免不同供应商响应协议不一致
+- 通过 `travel_agent.llm.create_model_factory()` 按 Agent 分层选型：低复杂度任务默认走 `fast`，复杂推理任务默认走 `reasoning`
+- 必须配置对应供应商的 `LLM_API_KEY`、`LLM_MODEL_NAME` 和 `LLM_BASE_URL`
+- BGE-m3 Embedding模型需下载到 `data/models/bge-m3/`
 
 ### 数据存储
 - 当前版本长期记忆默认采用 **PostgreSQL 持久化**，`data/memory/{user_id}.json` 作为迁移来源和离线兜底
@@ -528,23 +596,35 @@ shanglv/
 
 ### 知识库初始化
 - 首次运行前必须初始化RAG知识库
-- 知识库文档位于 `.claude/skills/ask-question/data/documents/`
-- Milvus数据库文件生成在 `.claude/skills/ask-question/data/milvus_travel_kb.db`
+- 知识库文档位于 `data/documents/`
+- Milvus数据库文件生成在 `.claude/skills/ask-question/data/rag_knowledge/milvus_lite.db`
+- BM25 稀疏索引生成在 `.claude/skills/ask-question/data/rag_knowledge/bm25_index.json`
 
 ### 性能优化
 - 懒加载机制：系统启动时仅扫描Skill元数据，首次调用时才加载
 - 并行调度：同优先级Agent并发执行，提升响应速度
 - 缓存策略：热数据缓存，减少重复计算和LLM调用
+- 分层模型：事项收集、偏好、记忆查询、信息查询默认使用 fast 档；意图识别、RAG、行程规划默认使用 reasoning 档
+- 可观测性：请求、意图识别、Agent执行、完成/失败事件会写入 `data/traces/events.jsonl`，聚合指标写入 `data/traces/metrics.jsonl`
+
+### 可观测性报告
+
+```bash
+python travel_agent/scripts/observability_report.py
+```
 
 ---
 
 ## 🚀 未来规划
 
-- [ ] 完整实现Redis缓存层
-- [ ] 支持更多LLM模型（OpenAI、Claude等）
-- [ ] Web界面（FastAPI + React）
-- [ ] 更多Skill插件（酒店预订、机票查询等）
-- [ ] 监控和日志系统
+- [x] Redis 缓存层
+- [x] 支持更多 OpenAI-compatible LLM 模型（Doubao、OpenAI、DeepSeek、Qwen 等）
+- [x] Web 界面（FastAPI + React）
+- [x] BM25 混合检索
+- [x] Agent 分层模型选型
+- [x] 全链路可观测性
+- [ ] 强化学习与策略优化
+- [ ] 更多 Skill 插件（酒店预订、机票查询等）
 
 ---
 

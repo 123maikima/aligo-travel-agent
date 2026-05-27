@@ -13,7 +13,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 import asyncio
-from context.memory_manager import MemoryManager
+from travel_agent.context.memory_manager import MemoryManager
 from agentscope import init as init_agentscope
 from agentscope.model import OpenAIChatModel
 import logging
@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 
 # 从配置文件读取LLM配置
-from config import LLM_CONFIG
+from travel_agent.config import LLM_CONFIG
 
 
 def print_section(title):

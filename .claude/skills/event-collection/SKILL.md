@@ -1,6 +1,11 @@
 ---
 name: event-collection
 description: Use this skill when the user provides travel details like origin, destination, dates, purpose, or when planning a trip. It extracts structured event information for itinerary planning.
+agent_name: event_collection
+agent_module: travel_agent.agents.event_collection_agent
+agent_class: EventCollectionAgent
+aliases:
+  - event-collection
 ---
 
 # Event Collection Skill

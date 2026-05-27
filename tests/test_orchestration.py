@@ -14,15 +14,15 @@ sys.path.insert(0, project_root)
 
 from agentscope.model import OpenAIChatModel
 from agentscope.message import Msg
-from config_agentscope import init_agentscope
-from config import LLM_CONFIG
-from context.memory_manager import MemoryManager
-from agents.intention_agent import IntentionAgent
-from agents.orchestration_agent import OrchestrationAgent
-from agents.event_collection_agent import EventCollectionAgent
-from agents.itinerary_planning_agent import ItineraryPlanningAgent
-from agents.information_query_agent import InformationQueryAgent
-from agents.rag_knowledge_agent import RAGKnowledgeAgent
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.config import LLM_CONFIG
+from travel_agent.context.memory_manager import MemoryManager
+from travel_agent.agents.intention_agent import IntentionAgent
+from travel_agent.agents.orchestration_agent import OrchestrationAgent
+from travel_agent.agents.event_collection_agent import EventCollectionAgent
+from travel_agent.agents.itinerary_planning_agent import ItineraryPlanningAgent
+from travel_agent.agents.information_query_agent import InformationQueryAgent
+from travel_agent.agents.rag_knowledge_agent import RAGKnowledgeAgent
 
 
 async def test_orchestration():

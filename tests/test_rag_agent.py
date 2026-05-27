@@ -5,7 +5,7 @@
 
 使用方法：
   # 先初始化知识库
-  python scripts/init_knowledge_base.py
+  python travel_agent/scripts/init_knowledge_base.py
 
   # 然后运行测试
   python tests/test_rag_agent.py
@@ -22,9 +22,9 @@ sys.path.insert(0, project_root)
 
 from agentscope.message import Msg
 from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
-from agents.rag_knowledge_agent import RAGKnowledgeAgent
-from config import LLM_CONFIG
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.agents.rag_knowledge_agent import RAGKnowledgeAgent
+from travel_agent.config import LLM_CONFIG
 
 
 async def test_rag_agent():
@@ -63,7 +63,7 @@ async def test_rag_agent():
 
     if not agent.initialized:
         print("❌ RAG Agent未正确初始化")
-        print("   请先运行: python scripts/init_knowledge_base.py")
+        print("   请先运行: python travel_agent/scripts/init_knowledge_base.py")
         return
 
     print("✓ RAG Agent创建成功")

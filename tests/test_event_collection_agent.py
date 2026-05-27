@@ -2,11 +2,14 @@
 测试事项收集智能体
 """
 import sys
-sys.path.append('..')
+import os
+
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 from agentscope.message import Msg
-from config_agentscope import init_agentscope
-from agents.event_collection_agent import EventCollectionAgent
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.agents.event_collection_agent import EventCollectionAgent
 
 
 def test_event_collection_agent():

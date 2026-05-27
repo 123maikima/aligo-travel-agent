@@ -12,7 +12,7 @@ from unittest.mock import patch
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from context.memory_manager import MemoryManager
+from travel_agent.context.memory_manager import MemoryManager
 
 
 class _FakeLongTermMemory:

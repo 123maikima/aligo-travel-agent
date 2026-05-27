@@ -11,7 +11,7 @@ import time
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from context.redis_cache import RedisCache, CacheStats
+from travel_agent.context.redis_cache import RedisCache, CacheStats
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -153,7 +153,7 @@ def test_redis_hit_rate():
 
 def test_short_term_memory_with_redis():
     """测试 ShortTermMemory + Redis 集成"""
-    from context.short_term_memory import ShortTermMemory
+    from travel_agent.context.short_term_memory import ShortTermMemory
 
     cache = RedisCache()
     if not cache.enabled:
@@ -198,7 +198,7 @@ def test_short_term_memory_with_redis():
 
 def test_long_term_memory_preference_redis():
     """测试 LongTermMemory + Redis 偏好缓存集成"""
-    from context.long_term_memory import LongTermMemory
+    from travel_agent.context.long_term_memory import LongTermMemory
 
     cache = RedisCache()
     if not cache.enabled:
@@ -247,7 +247,7 @@ def test_long_term_memory_preference_redis():
 
 def test_long_term_memory_summary_invalidation():
     """测试长期记忆变更会失效 Redis 总结缓存"""
-    from context.long_term_memory import LongTermMemory
+    from travel_agent.context.long_term_memory import LongTermMemory
 
     cache = RedisCache()
     if not cache.enabled:
@@ -276,7 +276,7 @@ def test_long_term_memory_summary_invalidation():
 
 def test_short_term_session_reset():
     """测试短期记忆切换会话时不会残留旧消息"""
-    from context.short_term_memory import ShortTermMemory
+    from travel_agent.context.short_term_memory import ShortTermMemory
 
     stm = ShortTermMemory(max_turns=3)
     stm.add_message("user", "session_a_1")

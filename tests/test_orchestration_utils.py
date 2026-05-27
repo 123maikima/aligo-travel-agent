@@ -9,7 +9,7 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agents.orchestration_agent import OrchestrationAgent
+from travel_agent.agents.orchestration_agent import OrchestrationAgent
 
 
 def test_group_tasks_by_priority():

@@ -37,9 +37,9 @@ except ImportError as e:
 
 from agentscope.message import Msg
 from agentscope.model import OpenAIChatModel
-from config_agentscope import init_agentscope
-from agents.intention_agent import IntentionAgent
-from config import LLM_CONFIG
+from travel_agent.config_agentscope import init_agentscope
+from travel_agent.agents.intention_agent import IntentionAgent
+from travel_agent.config import LLM_CONFIG
 
 
 async def test_intention_agent():
