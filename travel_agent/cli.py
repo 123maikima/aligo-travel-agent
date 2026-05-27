@@ -5,9 +5,8 @@ Aligo 商旅助手 - CLI 交互界面
 使用 Rich 库实现美观的终端交互
 """
 import asyncio
+import logging
 import sys
-import os
-from typing import Optional
 from pathlib import Path
 
 # 添加项目根目录到路径，便于直接运行 `python travel_agent/cli.py`
@@ -15,18 +14,23 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
 from rich.console import Console
-from rich.panel import Panel
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Prompt
 from rich.table import Table
-from rich.markdown import Markdown
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.layout import Layout
-from rich.live import Live
-from rich.text import Text
 import json
 
+logger = logging.getLogger(__name__)
+
 from travel_agent.config_agentscope import init_agentscope
-from travel_agent.config import LLM_CONFIG, SYSTEM_CONFIG, RESILIENCE_CONFIG, POSTGRES_CONFIG, REDIS_CONFIG
+from travel_agent.config import (
+    LLM_CONFIG,
+    MAX_MESSAGE_LENGTH,
+    POSTGRES_CONFIG,
+    REDIS_CONFIG,
+    RESILIENCE_CONFIG,
+    SYSTEM_CONFIG,
+    validate_secrets,
+)
 from travel_agent.context.memory_manager import MemoryManager
 from travel_agent.context.redis_cache import RedisCache
 from travel_agent.utils.circuit_breaker import CircuitBreaker, CircuitOpenError
@@ -501,15 +505,15 @@ class AligoCLI:
                 # 深度清洗
                 if isinstance(answer, dict):
                     answer = answer.get("answer", str(answer))
-                
+
                 if isinstance(answer, str) and answer.strip().startswith("{") and answer.strip().endswith("}"):
                     try:
                         import json
                         json_obj = json.loads(answer)
                         if isinstance(json_obj, dict) and "answer" in json_obj:
                             answer = json_obj["answer"]
-                    except:
-                        pass
+                    except (json.JSONDecodeError, ValueError) as exc:
+                        logger.debug("Failed to parse RAG answer JSON: %s", exc)
 
                 if answer:
                     self.console.print(f"\n{answer}")
@@ -635,7 +639,8 @@ class AligoCLI:
                     try:
                         dt = datetime.fromisoformat(timestamp)
                         time_str = dt.strftime("%H:%M:%S")
-                    except:
+                    except (ValueError, TypeError) as exc:
+                        logger.debug("Failed to parse message timestamp: %s", exc)
                         time_str = ""
                 else:
                     time_str = ""
@@ -739,6 +744,12 @@ class AligoCLI:
                     self.show_preferences()
                 else:
                     # 处理自然语言查询
+                    if len(user_input) > MAX_MESSAGE_LENGTH:
+                        self.console.print(
+                            f"输入过长：最多支持 {MAX_MESSAGE_LENGTH} 个字符，请缩短后重试。",
+                            style="yellow",
+                        )
+                        continue
                     await self.process_query(user_input)
 
             except KeyboardInterrupt:
@@ -757,6 +768,7 @@ def run_health_check_standalone() -> int:
         0 成功，1 失败（便于脚本/监控）
     """
     import asyncio
+    validate_secrets()
     init_agentscope()
     ok, msg = asyncio.run(check_llm_health(
         config=LLM_CONFIG,
@@ -771,6 +783,7 @@ def run_health_check_standalone() -> int:
 
 def main():
     """主函数"""
+    validate_secrets()
     if len(sys.argv) > 1 and sys.argv[1].strip().lower() == "health":
         exit(run_health_check_standalone())
     cli = AligoCLI()

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Type, TypeVar
@@ -32,7 +33,16 @@ except ImportError:
 
 from starlette.requests import Request
 
-from travel_agent.config import API_CONFIG, LLM_CONFIG, REDIS_CONFIG, RESILIENCE_CONFIG, SYSTEM_CONFIG
+from travel_agent.config import (
+    API_CONFIG,
+    LLM_CONFIG,
+    MAX_MESSAGE_LENGTH,
+    RATE_LIMIT_CONFIG,
+    REDIS_CONFIG,
+    RESILIENCE_CONFIG,
+    SYSTEM_CONFIG,
+    validate_secrets,
+)
 from travel_agent.config_agentscope import init_agentscope
 from travel_agent.context.redis_cache import RedisCache
 from travel_agent.llm import create_model_factory
@@ -69,7 +79,7 @@ class AuthTokenResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=MAX_MESSAGE_LENGTH)
     user_id: Optional[str] = None
     session_id: Optional[str] = None
     stream: bool = True
@@ -92,6 +102,64 @@ def _model_validate(model_cls: Type[T], payload: Dict[str, Any]) -> T:
 
 def _json_response(data: Any, status_code: int = 200):
     return JSONResponse(data, status_code=status_code)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _parse_rate_limit(value: str) -> tuple[int, int]:
+    amount, _, period = value.partition("/")
+    count = int(amount.strip())
+    normalized = period.strip().lower()
+    windows = {
+        "second": 1,
+        "sec": 1,
+        "s": 1,
+        "minute": 60,
+        "min": 60,
+        "m": 60,
+        "hour": 3600,
+        "h": 3600,
+    }
+    if normalized not in windows:
+        raise ValueError(f"Unsupported rate limit period: {period}")
+    return count, windows[normalized]
+
+
+class InMemoryRateLimiter:
+    """Small fixed-window limiter used when no external limiter is configured."""
+
+    def __init__(self, enabled: bool = True):
+        self.enabled = enabled
+        self._buckets: Dict[str, tuple[float, int]] = {}
+
+    def check(self, namespace: str, key: str, limit: str) -> tuple[bool, int]:
+        if not self.enabled:
+            return True, 0
+        count, window_seconds = _parse_rate_limit(limit)
+        now = time.monotonic()
+        bucket_key = f"{namespace}:{key}"
+        window_started, used = self._buckets.get(bucket_key, (now, 0))
+        elapsed = now - window_started
+        if elapsed >= window_seconds:
+            self._buckets[bucket_key] = (now, 1)
+            return True, 0
+        if used >= count:
+            return False, max(1, int(window_seconds - elapsed))
+        self._buckets[bucket_key] = (window_started, used + 1)
+        return True, 0
+
+
+def _rate_limit_response(retry_after: int):
+    return JSONResponse(
+        {"error": "Too Many Requests", "detail": "Rate limit exceeded"},
+        status_code=429,
+        headers={"Retry-After": str(retry_after)},
+    )
 
 
 def _create_chat_pipeline() -> ChatPipeline:
@@ -119,17 +187,20 @@ def create_app():
 
     @asynccontextmanager
     async def lifespan(app):
+        validate_secrets()
         app.state.chat_pipeline = _create_chat_pipeline()
         app.state.console = console
         app.state.session_store = session_store
         app.state.api_config = API_CONFIG
+        app.state.rate_limiter = InMemoryRateLimiter(enabled=bool(RATE_LIMIT_CONFIG.get("enabled", True)))
         logger.info("Travel agent web API started")
         yield
 
     async def _get_payload(request: Request) -> Dict[str, Any]:
         try:
             payload = await request.json()
-        except Exception:
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning("Invalid JSON request payload: %s", exc)
             payload = {}
         return payload if isinstance(payload, dict) else {}
 
@@ -190,6 +261,15 @@ def create_app():
         })
 
     async def auth_token(request: Request):
+        limiter: InMemoryRateLimiter = request.app.state.rate_limiter
+        allowed, retry_after = limiter.check(
+            "auth_token",
+            _client_ip(request),
+            str(RATE_LIMIT_CONFIG.get("token", "10/minute")),
+        )
+        if not allowed:
+            return _rate_limit_response(retry_after)
+
         payload = await _get_payload(request)
         try:
             request_model = _model_validate(AuthTokenRequest, payload)
@@ -321,6 +401,15 @@ def create_app():
             return _json_response({"error": "user_id does not match token principal"}, status_code=403)
         if request_model.session_id and request_model.session_id != principal.session_id:
             return _json_response({"error": "session_id does not match token principal"}, status_code=403)
+
+        limiter: InMemoryRateLimiter = request.app.state.rate_limiter
+        allowed, retry_after = limiter.check(
+            "chat",
+            principal.user_id or _client_ip(request),
+            str(RATE_LIMIT_CONFIG.get("chat", "60/minute")),
+        )
+        if not allowed:
+            return _rate_limit_response(retry_after)
 
         pipeline: ChatPipeline = request.app.state.chat_pipeline
 

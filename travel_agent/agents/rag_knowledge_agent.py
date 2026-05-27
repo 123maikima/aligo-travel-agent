@@ -327,8 +327,8 @@ class RAGKnowledgeAgent(AgentBase):
                 if hasattr(self.milvus_client, 'close'):
                     try:
                         self.milvus_client.close()
-                    except:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Failed to close stale Milvus client: %s", exc)
 
                 # 重新创建客户端
                 self.milvus_client = MilvusClient(self._milvus_db_path)
@@ -498,8 +498,8 @@ class RAGKnowledgeAgent(AgentBase):
                 
                 # 使用提取到的 query（即使为空，也比 JSON 字符串好）
                 user_query = extracted_query
-            except:
-                pass  # 解析失败则保留原字符串
+            except (json.JSONDecodeError, TypeError) as exc:
+                logger.debug("Failed to parse RAG request JSON: %s", exc)
 
         # 检索相关知识
         retrieved_docs = self.search_knowledge(user_query)
@@ -586,8 +586,8 @@ class RAGKnowledgeAgent(AgentBase):
                         # 如果 LLM 输出了 {"answer": "..."} 或 {"content": "..."}
                         if isinstance(json_obj, dict):
                             answer = json_obj.get("answer") or json_obj.get("content") or answer
-                    except:
-                        pass
+                    except (json.JSONDecodeError, TypeError) as exc:
+                        logger.debug("Failed to parse RAG answer JSON: %s", exc)
 
             except Exception as e:
                 logger.error(f"Error generating answer with LLM: {e}")

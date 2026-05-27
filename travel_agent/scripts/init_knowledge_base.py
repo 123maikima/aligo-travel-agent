@@ -2,6 +2,8 @@
 初始化RAG知识库
 从 data/documents 目录加载商旅相关文档并导入到向量数据库中
 """
+import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -15,6 +17,9 @@ if str(project_root) not in sys.path:
 from travel_agent.config import LLM_CONFIG
 from travel_agent.llm import create_model_factory
 from travel_agent.agents.rag_knowledge_agent import RAGKnowledgeAgent
+
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_documents_dir() -> Path:
@@ -297,9 +302,9 @@ def main():
                     metadata = doc.get('metadata', {})
                     if isinstance(metadata, str):
                         try:
-                            import json
                             metadata = json.loads(metadata)
-                        except:
+                        except json.JSONDecodeError as exc:
+                            logger.debug("Failed to parse document metadata JSON: %s", exc)
                             metadata = {}
                     
                     title = metadata.get('title', 'Unknown')
@@ -319,8 +324,8 @@ def main():
             print("\n正在清理资源...")
             try:
                 rag_agent.close()
-            except:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to close RAG agent: %s", exc)
             print("✓ 资源清理完成")
 
 

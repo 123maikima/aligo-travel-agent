@@ -124,6 +124,12 @@
 
 配置见 `config.py` 中的 `RESILIENCE_CONFIG`（重试次数、熔断阈值、恢复时间等）。
 
+### 安全与请求限制
+
+服务启动会校验 `API_JWT_SECRET`、`LLM_API_KEY`，以及启用 PostgreSQL 时的 `POSTGRES_PASSWORD`，长度低于 16 字符会拒绝启动。仅本地开发或 CI 可设置 `ALLOW_INSECURE_STARTUP=true` 临时绕过，生产环境不要启用。
+
+Web API 默认限制 `/api/v1/chat` 为 `60/minute`，`/api/v1/auth/token` 为 `10/minute`，可通过 `RATE_LIMIT_CHAT` 和 `RATE_LIMIT_TOKEN` 调整。当前内存限流按进程计数，多容器部署不会共享计数；需要统一配额时应接入共享存储。聊天消息默认最长 `4096` 字符，可通过 `MAX_MESSAGE_LENGTH` 调整。
+
 ---
 
 ## 📊 关键指标
@@ -587,7 +593,7 @@ shanglv/
 - 通过 `travel_agent.llm.create_chat_model()` 统一创建 LLM，Agent 层只接收统一模型对象，避免不同供应商响应协议不一致
 - 通过 `travel_agent.llm.create_model_factory()` 按 Agent 分层选型：低复杂度任务默认走 `fast`，复杂推理任务默认走 `reasoning`
 - 必须配置对应供应商的 `LLM_API_KEY`、`LLM_MODEL_NAME` 和 `LLM_BASE_URL`
-- BGE-m3 Embedding模型需下载到 `data/models/bge-m3/`
+- BGE-m3 Embedding模型已放在 `data/models/bge-m3/`，部署时也可通过 `RAG_EMBEDDING_MODEL` 指向其他可用路径
 
 ### 数据存储
 - 当前版本长期记忆默认采用 **PostgreSQL 持久化**，`data/memory/{user_id}.json` 作为迁移来源和离线兜底

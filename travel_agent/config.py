@@ -2,8 +2,12 @@
 Configuration for the Aligo Multi-Agent System
 """
 import os
+import logging
 from pathlib import Path
 from typing import Any, Dict
+
+
+logger = logging.getLogger(__name__)
 
 
 def _load_dotenv_file():
@@ -45,6 +49,14 @@ def _env_str(name: str, default: str) -> str:
     if value is None:
         return default
     return value.strip() or default
+
+
+def _env_optional_str(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
 
 # LLM Configuration
 LLM_CONFIG = {
@@ -130,6 +142,18 @@ POSTGRES_CONFIG = {
     "enabled": _env_bool("POSTGRES_ENABLED", False),
 }
 
+# Request safety limits
+MAX_MESSAGE_LENGTH = _env_int("MAX_MESSAGE_LENGTH", 4096)
+
+# API rate limits. The in-process fallback is per worker; Redis-backed storage is
+# recommended for multi-container deployments.
+RATE_LIMIT_CONFIG = {
+    "enabled": _env_bool("RATE_LIMIT_ENABLED", True),
+    "chat": _env_str("RATE_LIMIT_CHAT", "60/minute"),
+    "token": _env_str("RATE_LIMIT_TOKEN", "10/minute"),
+    "redis_url": _env_optional_str("RATE_LIMIT_REDIS_URL"),
+}
+
 # 连接与可用性：重试、熔断、健康检查
 RESILIENCE_CONFIG = {
     "max_retries": 3,              # 单次请求最大重试次数（与 SYSTEM_CONFIG 对齐）
@@ -144,6 +168,7 @@ RESILIENCE_CONFIG = {
 # Observability: JSONL trace sink and lightweight metrics
 OBSERVABILITY_CONFIG = {
     "enabled": _env_bool("OBSERVABILITY_ENABLED", True),
+    "mask_pii": _env_bool("OBSERVABILITY_MASK_PII", True),
     "trace_dir": _env_str("OBSERVABILITY_TRACE_DIR", "data/traces"),
     "event_log": _env_str("OBSERVABILITY_EVENT_LOG", "data/traces/events.jsonl"),
     "metrics_log": _env_str("OBSERVABILITY_METRICS_LOG", "data/traces/metrics.jsonl"),
@@ -158,3 +183,32 @@ API_CONFIG = {
     "access_token_ttl_minutes": _env_int("API_ACCESS_TOKEN_TTL_MINUTES", 720),
     "require_auth": _env_bool("API_REQUIRE_AUTH", True),
 }
+
+
+def validate_secrets() -> None:
+    """Fail fast when required runtime secrets are missing or weak."""
+    allow_insecure = _env_bool("ALLOW_INSECURE_STARTUP", False)
+    checks = [
+        ("API_JWT_SECRET", API_CONFIG.get("jwt_secret")),
+        ("LLM_API_KEY", LLM_CONFIG.get("api_key")),
+    ]
+    if POSTGRES_CONFIG.get("enabled"):
+        checks.append(("POSTGRES_PASSWORD", POSTGRES_CONFIG.get("password")))
+
+    invalid = []
+    for name, secret in checks:
+        if not isinstance(secret, str) or len(secret.strip()) < 16:
+            invalid.append(name)
+
+    if not invalid:
+        return
+
+    message = (
+        "Insecure startup blocked: configure strong values for "
+        + ", ".join(invalid)
+        + " (minimum 16 characters). Set ALLOW_INSECURE_STARTUP=true only for local development or CI."
+    )
+    if allow_insecure:
+        logger.warning("ALLOW_INSECURE_STARTUP=true: %s", message)
+        return
+    raise RuntimeError(message)

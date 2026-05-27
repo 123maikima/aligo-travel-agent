@@ -9,7 +9,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import hashlib
 import json
+import re
 import threading
 import time
 import uuid
@@ -28,6 +30,39 @@ def truncate_value(value: Any, max_chars: int) -> Any:
         return [truncate_value(item, max_chars) for item in value[:20]]
     if isinstance(value, dict):
         return {str(k): truncate_value(v, max_chars) for k, v in list(value.items())[:80]}
+    return value
+
+
+_SECRET_PATTERN = re.compile(r"\b[A-Za-z0-9_-]{20,}\b")
+
+
+def _mask_query(value: str) -> str:
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    prefix = value[:64]
+    suffix = "...[masked]" if len(value) > 64 else "[masked]"
+    return f"{prefix}{suffix} sha256={digest}"
+
+
+def _redact_error(value: str) -> str:
+    return _SECRET_PATTERN.sub("***", value)
+
+
+def mask_pii(value: Any) -> Any:
+    if not OBSERVABILITY_CONFIG.get("mask_pii", True):
+        return value
+    if isinstance(value, list):
+        return [mask_pii(item) for item in value]
+    if isinstance(value, dict):
+        masked = {}
+        for key, item in value.items():
+            key_str = str(key)
+            if key_str == "query" and isinstance(item, str):
+                masked[key_str] = _mask_query(item)
+            elif key_str == "error" and isinstance(item, str):
+                masked[key_str] = _redact_error(item)
+            else:
+                masked[key_str] = mask_pii(item)
+        return masked
     return value
 
 
@@ -84,6 +119,7 @@ class TraceContext:
     events: List[Dict[str, Any]] = field(default_factory=list)
 
     def emit(self, event_type: str, stage: str, data: Optional[Dict[str, Any]] = None):
+        safe_data = mask_pii(data or {})
         event = {
             "timestamp": utc_now(),
             "trace_id": self.trace_id,
@@ -91,7 +127,7 @@ class TraceContext:
             "session_id": self.session_id,
             "event_type": event_type,
             "stage": stage,
-            "data": data or {},
+            "data": safe_data,
         }
         self.events.append(event)
         self.sink.write_event(event)
@@ -160,7 +196,7 @@ class TraceContext:
             "intents": intents,
             "agent_metrics": agent_metrics,
             "agent_count": len(agent_metrics),
-            "error": error,
+            "error": _redact_error(error) if error and OBSERVABILITY_CONFIG.get("mask_pii", True) else error,
         }
         self.sink.write_metrics(metrics)
         self.emit("trace_end", "trace", metrics)
